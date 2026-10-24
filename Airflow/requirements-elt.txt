@@ -1,0 +1,6 @@
+# Mismas versiones que Lab/requirements.txt
+duckdb==1.3.2
+dlt[duckdb,sql_database]>=1.10,<2
+dbt-duckdb>=1.9,<1.10
+pymysql>=1.1
+sqlalchemy>=2.0

@@ -1,0 +1,92 @@
+# Clúster mínimo de Hadoop a partir de las imágenes publicadas.
+# No construye nada: docker compose baja profesorbigdata/*:v2.0 del Hub.
+#
+#   docker compose -f docker-compose.hub.yml up -d
+#   docker compose -f docker-compose.hub.yml down
+
+networks:
+  hadoop-net:
+    driver: bridge
+
+volumes:
+  namenode-data:
+  datanode-data:
+
+services:
+
+  namenode:
+    image: profesorbigdata/hadoop-namenode-image-profesor:v2.0
+    container_name: namenode
+    hostname: namenode
+    command: /opt/bd/start-daemons.sh
+    ports:
+      - "9870:9870"
+    volumes:
+      - namenode-data:/var/data/hadoop/hdfs
+    networks:
+      - hadoop-net
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/namenode-ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  resourcemanager:
+    image: profesorbigdata/hadoop-resourcemanager-image-profesor:v2.0
+    container_name: resourcemanager
+    hostname: resourcemanager
+    command: /opt/bd/start-daemons.sh
+    ports:
+      - "8088:8088"
+    networks:
+      - hadoop-net
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/resourcemanager-ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  dnnm:
+    image: profesorbigdata/hadoop-datanode-image-profesor:v2.0
+    container_name: dnnm
+    hostname: dnnm
+    command: /opt/bd/start-daemons.sh
+    depends_on:
+      namenode:
+        condition: service_healthy
+      resourcemanager:
+        condition: service_healthy
+    ports:
+      - "9864:9864"
+      - "8042:8042"
+    volumes:
+      - datanode-data:/var/data/hadoop/hdfs
+    networks:
+      - hadoop-net
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/dnnm-ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  client:
+    image: profesorbigdata/hadoop-client-image-profesor:v2.0
+    container_name: client
+    hostname: client
+    command: /opt/bd/start-client.sh
+    depends_on:
+      namenode:
+        condition: service_healthy
+      resourcemanager:
+        condition: service_healthy
+      dnnm:
+        condition: service_healthy
+    ports:
+      - "8889:8889"
+    volumes:
+      - ./notebooks:/media/notebooks
+    networks:
+      - hadoop-net

@@ -1,0 +1,7 @@
+asier 6 7
+eduardo 0 4
+luisa 7
+eduardo 8 1 3
+luisa 5 6 7
+luisa 10
+asier 3

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!-- core-site.xml del NameNode cuando corre en docker-compose.stack.yml.
+     Igual que core-site.xml, más los permisos de proxy que necesita HiveServer2:
+     abre las sesiones de Tez en HDFS en nombre del usuario conectado. -->
+<configuration>
+  <property>
+    <!-- nombre del Namenode -->
+    <name>fs.defaultFS</name>
+    <value>hdfs://namenode:9000/</value>
+    <final>true</final>
+  </property>
+  <property>
+    <!-- Almacenamiento temporal (debe tener suficiente espacio) -->
+    <name>hadoop.tmp.dir</name>
+    <value>/var/tmp/hadoop-${user.name}</value>
+    <final>true</final>
+  </property>
+  <property>
+    <name>hadoop.proxyuser.hdadmin.hosts</name>
+    <value>*</value>
+  </property>
+  <property>
+    <name>hadoop.proxyuser.hdadmin.groups</name>
+    <value>*</value>
+  </property>
+</configuration>

@@ -1,0 +1,22 @@
+# Generados por el stack
+workspace/data/*
+!workspace/data/.gitignore
+workspace/dbt/retail/target/
+workspace/dbt/retail/logs/
+workspace/dbt/retail/dbt_packages/
+workspace/dbt/retail/.user.yml
+.dlt/
+
+# Python y Jupyter
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Editores y sistema
+*.swp
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+.env

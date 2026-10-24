@@ -1,0 +1,9 @@
+# dbt busca profiles.yml en el directorio actual, así no hace falta ~/.dbt
+retail:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('RETAIL_DUCKDB_PATH', '/workspace/data/retail.duckdb') }}"
+      schema: main
+      threads: 1

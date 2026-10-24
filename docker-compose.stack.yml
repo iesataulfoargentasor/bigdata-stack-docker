@@ -1,0 +1,521 @@
+# Stack de Big Data para la clase, construido sobre el clúster de Hadoop del profesor.
+#
+#   almacenamiento   HDFS (namenode, dnnm) y MinIO (API S3)
+#   cómputo          YARN (resourcemanager, dnnm)
+#   catálogo         Hive Metastore sobre MySQL, HiveServer2
+#   consulta         Trino (Hive + MySQL + TPCH)
+#   ELT              nodo lab: DuckDB + dlt + dbt, con JupyterLab
+#   orquestación     Airflow (LocalExecutor, Postgres)
+#
+# Nada arranca sin profile. Profiles de componente:
+#   hadoop    namenode, resourcemanager, dnnm, client, hdfs-init
+#   minio     minio, minio-init
+#   hive      mysql-metastore, hive-metastore, hiveserver2
+#   trino     trino
+#   lab       mysql-retail, retail-init, lab
+#   airflow   mysql-retail, retail-init, postgres-airflow, airflow-init, airflow-webserver, airflow-scheduler
+# Profiles paraguas:
+#   lake      hadoop + minio + hive + trino + mysql-retail (sin client ni lab)
+#   elt       minio + lab + airflow
+#   all       todo
+#
+# La imagen base de Hadoop (profesorbigdata/hadoop-base-image:v2.0) se descarga de
+# Docker Hub. Para construirla en local:
+#   docker compose -f docker-compose.stack.yml --profile build build hadoop-base
+#
+#   docker compose -f docker-compose.stack.yml --profile lake up -d --build
+#   docker compose -f docker-compose.stack.yml --profile elt up -d --build
+#   docker compose -f docker-compose.stack.yml --profile lake --profile lab up -d
+#   docker compose -f docker-compose.stack.yml --profile all up -d --build
+#
+# Entre sesiones: stop/start. down borra contenedores y red (los volúmenes no, salvo con -v).
+#   docker compose -f docker-compose.stack.yml --profile all stop
+#   docker compose -f docker-compose.stack.yml --profile all start
+#
+# Usa los mismos nombres de contenedor que docker-compose.yml (namenode, dnnm...).
+# Antes de levantar este stack, para el clúster mínimo:
+#   docker compose down
+#
+# Puertos en el anfitrión:
+#   9870 NameNode · 9864 DataNode · 8088 ResourceManager · 8042 NodeManager
+#   8889 Jupyter del client (Hadoop) · 8888 JupyterLab del lab
+#   9000 MinIO API S3 · 9001 MinIO consola (minioadmin / minioadmin)
+#   8080 Trino · 8082 Airflow (admin / admin)
+#   9083 Hive Metastore · 10000 HiveServer2 JDBC · 10002 HiveServer2 web
+#   3306 mysql-metastore · 3307 mysql-retail (retail / retail)
+# Trino usa el 8080, igual que la consola de docker-compose.kafka.yml: no los levantes a la vez.
+#
+# Stack docente: permisos de HDFS abiertos, credenciales triviales, Jupyter sin token.
+
+name: bigdata-stack
+
+networks:
+  hadoop-net:
+    driver: bridge
+
+volumes:
+  namenode-data:
+  datanode-data:
+  minio-data:
+  mysql-metastore-data:
+  mysql-retail-data:
+  postgres-airflow-data:
+  airflow-logs:
+
+x-hive-common: &hive-common
+  image: profesorbigdata/hive-image-profesor:v2.0
+  build: ./Hive
+  volumes:
+    - ./Hive/conf:/hive_custom_conf:ro
+  networks:
+    - hadoop-net
+
+x-lab-common: &lab-common
+  image: profesorbigdata/lab-image-profesor:v2.0
+  build: ./Lab
+  # Mismo usuario que Airflow: los dos escriben /workspace/data/retail.duckdb
+  user: "${AIRFLOW_UID:-50000}:0"
+  volumes:
+    - ./workspace:/workspace
+  networks:
+    - hadoop-net
+
+x-airflow-common: &airflow-common
+  image: profesorbigdata/airflow-image-profesor:v2.0
+  build: ./Airflow
+  user: "${AIRFLOW_UID:-50000}:0"
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: Europe/Madrid
+    AIRFLOW__WEBSERVER__SECRET_KEY: bigdata-stack-clase
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    RETAIL_MYSQL_URL: mysql+pymysql://retail:retail@mysql-retail:3306/retail_db
+    RETAIL_DUCKDB_PATH: /workspace/data/retail.duckdb
+  volumes:
+    - ./Airflow/dags:/opt/airflow/dags
+    - airflow-logs:/opt/airflow/logs
+    - ./workspace:/workspace
+  networks:
+    - hadoop-net
+
+services:
+
+  # ---------------------------------------------------------------- hadoop
+
+  hadoop-base:
+    profiles: ["build"]
+    image: profesorbigdata/hadoop-base-image:v2.0
+    build:
+      context: ./Base
+
+  namenode:
+    profiles: ["hadoop", "lake", "all"]
+    image: profesorbigdata/hadoop-namenode-image-profesor:v2.0
+    build: ./NameNode
+    container_name: namenode
+    hostname: namenode
+    command: /opt/bd/start-daemons.sh
+    ports:
+      - "9870:9870"
+    volumes:
+      - namenode-data:/var/data/hadoop/hdfs
+      - ./NameNode/Config-files/core-site-stack.xml:/opt/bd/hadoop/etc/hadoop/core-site.xml:ro
+    networks:
+      - hadoop-net
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/namenode-ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
+
+  resourcemanager:
+    profiles: ["hadoop", "lake", "all"]
+    image: profesorbigdata/hadoop-resourcemanager-image-profesor:v2.0
+    build: ./ResourceManager
+    container_name: resourcemanager
+    hostname: resourcemanager
+    command: /opt/bd/start-daemons.sh
+    ports:
+      - "8088:8088"
+    networks:
+      - hadoop-net
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/resourcemanager-ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 40s
+
+  dnnm:
+    profiles: ["hadoop", "lake", "all"]
+    image: profesorbigdata/hadoop-datanode-image-profesor:v2.0
+    build: ./DataNode-NodeManager
+    container_name: dnnm
+    hostname: dnnm
+    command: /opt/bd/start-daemons.sh
+    depends_on:
+      namenode:
+        condition: service_healthy
+      resourcemanager:
+        condition: service_healthy
+    ports:
+      - "9864:9864"
+      - "8042:8042"
+    volumes:
+      - datanode-data:/var/data/hadoop/hdfs
+    networks:
+      - hadoop-net
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/dnnm-ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 40s
+
+  client:
+    profiles: ["hadoop", "all"]
+    image: profesorbigdata/hadoop-client-image-profesor:v2.0
+    build: ./Client
+    container_name: client
+    hostname: client
+    command: /opt/bd/start-client.sh
+    depends_on:
+      namenode:
+        condition: service_healthy
+      resourcemanager:
+        condition: service_healthy
+      dnnm:
+        condition: service_healthy
+    ports:
+      - "8889:8889"
+    volumes:
+      - ./notebooks:/media/notebooks
+    networks:
+      - hadoop-net
+
+  # Prepara HDFS para el catálogo y termina (exited 0).
+  # hdadmin arrancó el NameNode, así que es el superusuario de HDFS.
+  hdfs-init:
+    profiles: ["hadoop", "lake", "all"]
+    image: profesorbigdata/hadoop-client-image-profesor:v2.0
+    container_name: hdfs-init
+    user: hdadmin
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        hdfs dfs -mkdir -p /user/hive/warehouse /tmp/hive
+        hdfs dfs -chmod -R 777 /user/hive /tmp/hive
+        hdfs dfs -chmod 1777 /tmp
+        hdfs dfs -ls /user/hive /tmp
+    depends_on:
+      namenode:
+        condition: service_healthy
+      dnnm:
+        condition: service_healthy
+    networks:
+      - hadoop-net
+    restart: "no"
+
+  # ---------------------------------------------------------------- minio
+
+  # MinIO dejó de publicar imágenes en Docker Hub y quay.io.
+  # bitnamilegacy conserva la misma versión del servidor y del cliente mc.
+  minio:
+    profiles: ["minio", "lake", "elt", "all"]
+    image: bitnamilegacy/minio:2025.4.22
+    container_name: minio
+    hostname: minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_CONSOLE_PORT_NUMBER: "9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/bitnami/minio/data
+    networks:
+      - hadoop-net
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Crea los buckets del lago por capas y termina (exited 0)
+  minio-init:
+    profiles: ["minio", "lake", "elt", "all"]
+    image: bitnamilegacy/minio-client:2025.4.16
+    container_name: minio-init
+    environment:
+      MC_HOST_lago: http://minioadmin:minioadmin@minio:9000
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        mc mb --ignore-existing lago/raw-data lago/processed lago/warehouse
+        mc ls lago
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - hadoop-net
+    restart: "no"
+
+  # ---------------------------------------------------------------- hive
+
+  # Sólo metadatos del catálogo: qué tablas hay, sus columnas y su ruta
+  mysql-metastore:
+    profiles: ["hive", "lake", "all"]
+    image: mysql:8.4
+    container_name: mysql-metastore
+    hostname: mysql-metastore
+    command: ["--performance-schema=OFF", "--innodb-buffer-pool-size=64M"]
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: metastore
+      MYSQL_USER: hive
+      MYSQL_PASSWORD: hive
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-metastore-data:/var/lib/mysql
+    networks:
+      - hadoop-net
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -proot --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  hive-metastore:
+    <<: *hive-common
+    profiles: ["hive", "lake", "all"]
+    container_name: hive-metastore
+    hostname: hive-metastore
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: mysql
+      HIVE_CUSTOM_CONF_DIR: /hive_custom_conf
+      HADOOP_USER_NAME: hdadmin
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      SERVICE_OPTS: >-
+        -Xmx512m
+        -Djavax.jdo.option.ConnectionDriverName=com.mysql.cj.jdbc.Driver
+        -Djavax.jdo.option.ConnectionURL=jdbc:mysql://mysql-metastore:3306/metastore
+        -Djavax.jdo.option.ConnectionUserName=hive
+        -Djavax.jdo.option.ConnectionPassword=hive
+    ports:
+      - "9083:9083"
+    depends_on:
+      mysql-metastore:
+        condition: service_healthy
+      hdfs-init:
+        condition: service_completed_successfully
+        required: false
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9083'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  hiveserver2:
+    <<: *hive-common
+    profiles: ["hive", "lake", "all"]
+    container_name: hiveserver2
+    hostname: hiveserver2
+    environment:
+      SERVICE_NAME: hiveserver2
+      IS_RESUME: "true"
+      HIVE_CUSTOM_CONF_DIR: /hive_custom_conf
+      HADOOP_USER_NAME: hdadmin
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      SERVICE_OPTS: -Xmx1g
+      # Si el .pid sobrevive a un stop/start, el nuevo proceso recibe el mismo PID
+      # y HiveServer2 se niega a arrancar ("running as process 7").
+      HIVESERVER2_PID_DIR: /opt/hive/run
+    tmpfs:
+      - /opt/hive/run:mode=1777
+    ports:
+      - "10000:10000"
+      - "10002:10002"
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/10000'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # ---------------------------------------------------------------- trino
+
+  trino:
+    profiles: ["trino", "lake", "all"]
+    image: trinodb/trino:476
+    container_name: trino
+    hostname: trino
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Trino/catalog:/etc/trino/catalog:ro
+      - ./Trino/hadoop:/etc/trino/hadoop:ro
+      - ./Trino/jvm.config:/etc/trino/jvm.config:ro
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+        required: false
+      minio-init:
+        condition: service_completed_successfully
+        required: false
+      mysql-retail:
+        condition: service_healthy
+        required: false
+    networks:
+      - hadoop-net
+
+  # ---------------------------------------------------------------- lab
+
+  # Origen operacional: la base de datos transaccional de la que extrae dlt
+  mysql-retail:
+    profiles: ["lab", "airflow", "lake", "elt", "all"]
+    image: mysql:8.4
+    container_name: mysql-retail
+    hostname: mysql-retail
+    command: ["--performance-schema=OFF", "--innodb-buffer-pool-size=64M"]
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: retail_db
+      MYSQL_USER: retail
+      MYSQL_PASSWORD: retail
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-retail-data:/var/lib/mysql
+    networks:
+      - hadoop-net
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -proot --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # Carga retail_db y termina (exited 0). Si ya tiene datos, no hace nada.
+  retail-init:
+    <<: *lab-common
+    profiles: ["lab", "airflow", "lake", "elt", "all"]
+    container_name: retail-init
+    command: ["python", "/workspace/init/retail_init.py"]
+    depends_on:
+      mysql-retail:
+        condition: service_healthy
+    restart: "no"
+
+  lab:
+    <<: *lab-common
+    profiles: ["lab", "elt", "all"]
+    container_name: lab
+    hostname: lab
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://minio:9000
+      RETAIL_MYSQL_URL: mysql+pymysql://retail:retail@mysql-retail:3306/retail_db
+      RETAIL_DUCKDB_PATH: /workspace/data/retail.duckdb
+    ports:
+      - "8888:8888"
+    depends_on:
+      retail-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+        required: false
+
+  # ---------------------------------------------------------------- airflow
+
+  postgres-airflow:
+    profiles: ["airflow", "elt", "all"]
+    image: postgres:16.8-bookworm
+    container_name: postgres-airflow
+    hostname: postgres-airflow
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-airflow-data:/var/lib/postgresql/data
+    networks:
+      - hadoop-net
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Migra la base de metadatos y crea admin/admin; termina (exited 0)
+  airflow-init:
+    <<: *airflow-common
+    profiles: ["airflow", "elt", "all"]
+    container_name: airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        set -e
+        airflow db migrate
+        airflow users create --username admin --password admin \
+          --firstname Admin --lastname Clase --role Admin --email admin@example.com || true
+    depends_on:
+      postgres-airflow:
+        condition: service_healthy
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    profiles: ["airflow", "elt", "all"]
+    container_name: airflow-webserver
+    command: webserver
+    ports:
+      - "8082:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    profiles: ["airflow", "elt", "all"]
+    container_name: airflow-scheduler
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      retail-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped

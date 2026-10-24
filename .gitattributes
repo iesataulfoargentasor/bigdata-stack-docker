@@ -1,0 +1,8 @@
+# Los scripts y configuraciones se ejecutan dentro de contenedores Linux:
+# siempre LF, también al clonar en Windows.
+* text=auto eol=lf
+
+*.png  binary
+*.gif  binary
+*.jpg  binary
+*.ipynb text eol=lf

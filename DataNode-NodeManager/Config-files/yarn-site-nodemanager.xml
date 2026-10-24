@@ -1,0 +1,81 @@
+<?xml version="1.0"?>
+<!--
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License. See accompanying LICENSE file.
+-->
+<configuration>
+<!-- Site specific YARN configuration properties -->
+      <property>
+        <!-- The hostname of the ResourceManager -->
+        <name>yarn.resourcemanager.hostname</name>
+        <value>resourcemanager</value>
+        <final>true</final>
+      </property>
+
+  <property>
+    <!-- Nombre resoluble dentro de la red Docker. Sin esto el NodeManager
+         se anuncia con el id del contenedor y el shuffle falla. -->
+    <name>yarn.nodemanager.hostname</name>
+    <value>dnnm</value>
+    <final>true</final>
+  </property>
+
+  <property>
+    <name>yarn.nodemanager.resource.detect-hardware-capabilities</name>
+    <value>false</value>
+    <final>true</final>
+  </property>
+
+  <property>
+    <!-- 2 vcores: el ApplicationMaster y una tarea pueden convivir -->
+    <name>yarn.nodemanager.resource.cpu-vcores</name>
+    <value>2</value>
+    <final>true</final>
+  </property>
+
+  <property>
+    <!-- Cupo lógico de YARN, no memoria reservada de antemano.
+         ApplicationMaster 512 + tarea 1024 caben a la vez. -->
+    <name>yarn.nodemanager.resource.memory-mb</name>
+    <value>3072</value>
+    <final>true</final>
+  </property>
+
+  <property>
+    <!-- Whether virtual memory limits will be enforced for containers (default true) -->
+    <name>yarn.nodemanager.vmem-check-enabled</name>
+    <value>false</value>
+    <final>true</final>
+  </property>
+
+
+ <property>
+    <!-- A comma separated list of auxiliaries services implemented ny the NodeManagers 
+        In this case, it tells the NodeManagers that they have to implement the MapReduce shuffle service-->
+    <name>yarn.nodemanager.aux-services</name>
+    <value>mapreduce_shuffle</value>
+    <final>true</final>
+  </property>
+
+  <property>
+    <!-- Class that implements the MapReduce shuffling service -->
+    <name>yarn.nodemanager.aux-services.mapreduce_shuffle.class</name>
+    <value>org.apache.hadoop.mapred.ShuffleHandler</value>
+    <final>true</final>
+  </property>
+
+  <property>
+    <name>yarn.application.classpath</name>
+    <value>/opt/bd/hadoop/etc/hadoop,/opt/bd/hadoop/share/hadoop/common/*,/opt/bd/hadoop/share/hadoop/common/lib/*,/opt/bd/hadoop/share/hadoop/hdfs/*,/opt/bd/hadoop/share/hadoop/hdfs/lib/*,/opt/bd/hadoop/share/hadoop/mapreduce/*,/opt/bd/hadoop/share/hadoop/mapreduce/lib/*,/opt/bd/hadoop/share/hadoop/yarn/*,/opt/bd/hadoop/share/hadoop/yarn/lib/*</value>
+  </property>
+</configuration>
+

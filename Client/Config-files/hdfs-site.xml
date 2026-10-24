@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+  <property>
+    <!-- El cliente es quien pide la replicación al crear un fichero.
+         Con un solo DataNode tiene que ser 1. -->
+    <name>dfs.replication</name>
+    <value>1</value>
+    <final>true</final>
+  </property>
+  <property>
+    <name>dfs.blocksize</name>
+    <value>64m</value>
+    <final>true</final>
+  </property>
+  <property>
+    <name>dfs.namenode.http-address</name>
+    <value>namenode:9870</value>
+  </property>
+  <property>
+    <name>dfs.client.use.datanode.hostname</name>
+    <value>true</value>
+  </property>
+</configuration>

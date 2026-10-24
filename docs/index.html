@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Despliegue del Stack de Big Data en Docker</title>
+<meta name="description" content="Guía paso a paso para desplegar el stack de Big Data (HDFS, YARN, MinIO, Hive, Trino, DuckDB, dlt, dbt y Airflow) con Docker Compose.">
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2230; --border: #30363d;
+    --text: #e6edf3; --muted: #9da7b3; --accent: #58a6ff; --ok: #3fb950;
+    --warn: #d29922; --bad: #f85149; --code: #0b0f14;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  a { color: var(--accent); }
+  .layout { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  nav { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 24px 18px;
+        background: var(--panel); border-right: 1px solid var(--border); }
+  nav h2 { font-size: 15px; margin: 0 0 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  nav a { display: block; padding: 6px 10px; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 14px; }
+  nav a:hover { background: var(--panel2); }
+  nav .num { display: inline-block; width: 22px; color: var(--accent); font-weight: 600; }
+  main { max-width: 980px; padding: 40px 48px 80px; }
+  header.hero { padding: 28px 32px; border: 1px solid var(--border); border-radius: 14px;
+                background: linear-gradient(135deg, #1f6feb33, #23863633); margin-bottom: 36px; }
+  header.hero h1 { margin: 0 0 8px; font-size: 32px; }
+  header.hero p { margin: 6px 0; color: var(--muted); }
+  .badges { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .badge { font-size: 13px; padding: 3px 10px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--border); }
+  section { margin: 0 0 48px; scroll-margin-top: 20px; }
+  section > h2 { font-size: 24px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  section > h2 .step { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px;
+                       border-radius: 50%; background: var(--accent); color: #0d1117; font-size: 17px; margin-right: 10px; }
+  h3 { margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14.5px; }
+  th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--panel2); }
+  code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13.5px;
+         background: var(--panel2); padding: 1px 6px; border-radius: 4px; }
+  .code { position: relative; margin: 12px 0; }
+  .code pre { margin: 0; padding: 14px 16px; background: var(--code); border: 1px solid var(--border);
+              border-radius: 8px; overflow-x: auto; }
+  .code pre code { background: none; padding: 0; font-size: 13.5px; line-height: 1.55; }
+  .copy { position: absolute; top: 8px; right: 8px; font-size: 12px; padding: 3px 10px; cursor: pointer;
+          background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
+  .copy:hover { border-color: var(--accent); }
+  .note, .warn, .ok { padding: 12px 16px; border-radius: 8px; margin: 14px 0; border-left: 4px solid; background: var(--panel); }
+  .note { border-color: var(--accent); } .warn { border-color: var(--warn); } .ok { border-color: var(--ok); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin: 16px 0; }
+  .card { border: 1px solid var(--border); border-radius: 12px; padding: 18px; background: var(--panel); }
+  .card h4 { margin: 0 0 6px; font-size: 18px; }
+  .card .tag { font-size: 12px; color: var(--muted); }
+  .card ul { padding-left: 18px; margin: 10px 0 0; font-size: 14.5px; }
+  .tabs { margin: 12px 0; }
+  .tabs .tab-buttons { display: flex; gap: 6px; }
+  .tabs button.t { padding: 6px 14px; border: 1px solid var(--border); border-bottom: none; border-radius: 8px 8px 0 0;
+                   background: var(--panel); color: var(--muted); cursor: pointer; font-size: 14px; }
+  .tabs button.t.active { background: var(--code); color: var(--text); }
+  .tabs .panel { display: none; } .tabs .panel.active { display: block; }
+  .tabs .panel .code { margin-top: 0; } .tabs .panel .code pre { border-top-left-radius: 0; }
+  .check { list-style: none; padding-left: 0; }
+  .check li { padding: 4px 0 4px 30px; position: relative; }
+  .check li::before { content: "☐"; position: absolute; left: 4px; color: var(--accent); }
+  details { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin: 10px 0; background: var(--panel); }
+  details summary { cursor: pointer; font-weight: 600; }
+  .mermaid { background: #ffffff; border-radius: 10px; padding: 16px; margin: 16px 0; text-align: center; }
+  footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--border); padding-top: 18px; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+    main { padding: 24px 18px 60px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav>
+  <h2>Guía de despliegue</h2>
+  <a href="#mapa"><span class="num">·</span>Qué vamos a montar</a>
+  <a href="#requisitos"><span class="num">0</span>Requisitos</a>
+  <a href="#clonar"><span class="num">1</span>Clonar el repositorio</a>
+  <a href="#escenario"><span class="num">2</span>Elegir escenario</a>
+  <a href="#arrancar"><span class="num">3</span>Arrancar</a>
+  <a href="#comprobar"><span class="num">4</span>Comprobar</a>
+  <a href="#probar-lake"><span class="num">5</span>Primera prueba: el lago</a>
+  <a href="#probar-elt"><span class="num">6</span>Primera prueba: ELT</a>
+  <a href="#operacion"><span class="num">7</span>Apagar, encender, reiniciar</a>
+  <a href="#problemas"><span class="num">?</span>Problemas frecuentes</a>
+  <br>
+  <a href="https://github.com/iesataulfoargentasor/bigdata-stack-docker">📦 Repositorio</a>
+  <a href="https://github.com/iesataulfoargentasor/bigdata-stack-docker#readme">📘 README completo</a>
+</nav>
+
+<main>
+
+<header class="hero">
+  <h1>Stack de Big Data en Docker</h1>
+  <p>Guía paso a paso para desplegar en tu equipo un ecosistema completo de ingeniería de datos
+     con un único fichero de Docker Compose.</p>
+  <p>Clúster Hadoop del profesor + las piezas del
+     <a href="https://aitor-medrano.github.io/iabd/de/stack-docker-de.html">stack docente de Aitor Medrano</a>.</p>
+  <div class="badges">
+    <span class="badge">Hadoop 3.3.6</span><span class="badge">MinIO</span>
+    <span class="badge">Hive 4.0.1</span><span class="badge">Trino 476</span>
+    <span class="badge">DuckDB 1.3</span><span class="badge">dlt</span><span class="badge">dbt</span>
+    <span class="badge">Airflow 2.10</span>
+  </div>
+</header>
+
+<!-- ================================================================ MAPA -->
+<section id="mapa">
+  <h2>Qué vamos a montar</h2>
+  <p>Cuatro capas: <strong>orquestación</strong>, <strong>motores</strong>, <strong>catálogo y origen</strong> y
+     <strong>almacenamiento + cómputo</strong>. HDFS y MinIO conviven a propósito para comparar el enfoque
+     clásico (cómputo junto al dato) con el moderno (object storage).</p>
+  <pre class="mermaid">
+flowchart TB
+  subgraph O["Orquestación"]
+    AF["Airflow :8082"]
+  end
+  subgraph M["Motores"]
+    TR["Trino :8080"]
+    HS2["HiveServer2 :10000"]
+    LAB["lab :8888<br/>DuckDB · dlt · dbt"]
+  end
+  subgraph C["Catálogo y origen"]
+    HMS["Hive Metastore"]
+    MYR[("MySQL retail_db")]
+  end
+  subgraph A["Almacenamiento y cómputo"]
+    HDFS["HDFS<br/>namenode :9870 · dnnm"]
+    MINIO["MinIO :9001"]
+    YARN["YARN :8088"]
+  end
+  AF -. orquesta .-> LAB
+  TR --> HMS
+  HS2 --> HMS
+  TR --> HDFS
+  TR --> MINIO
+  TR --> MYR
+  LAB --> MYR
+  LAB --> MINIO
+  HDFS --- YARN
+  </pre>
+  <div class="note"><strong>Nada arranca por defecto.</strong> Cada servicio pertenece a uno o varios
+    <em>profiles</em>. Se enciende sólo el escenario de la sesión: así no hace falta un equipo enorme.</div>
+</section>
+
+<!-- ================================================================ 0 -->
+<section id="requisitos">
+  <h2><span class="step">0</span>Requisitos</h2>
+  <table>
+    <tr><th></th><th>Mínimo</th><th>Recomendado</th></tr>
+    <tr><td>Docker</td><td>Docker Desktop o Docker Engine con <strong>Compose v2.20+</strong></td><td>Última versión</td></tr>
+    <tr><td>Memoria para Docker</td><td>8 GB (un escenario a la vez)</td><td>12 GB o más para <code>all</code></td></tr>
+    <tr><td>Disco libre</td><td>15 GB</td><td>25 GB</td></tr>
+    <tr><td>CPU</td><td>4 núcleos</td><td>8 núcleos</td></tr>
+    <tr><td>Git</td><td colspan="2">Para clonar el repositorio</td></tr>
+  </table>
+
+  <p>Comprueba tu instalación:</p>
+  <div class="code"><pre><code>docker --version
+docker compose version     # debe ser v2.20 o superior
+docker info --format "Memoria para Docker: {{.MemTotal}} bytes · CPUs: {{.NCPU}}"</code></pre></div>
+
+  <h3>Si usas Windows</h3>
+  <ul class="check">
+    <li>Docker Desktop con el motor <strong>WSL 2</strong> activado.</li>
+    <li>El disco virtual de Docker en una unidad con espacio:
+        <em>Settings → Resources → Advanced → Disk image location</em>.</li>
+    <li>Memoria suficiente para WSL. Crea o edita <code>%UserProfile%\.wslconfig</code> y reinicia con <code>wsl --shutdown</code>:</li>
+  </ul>
+  <div class="code"><pre><code>[wsl2]
+memory=10GB
+processors=6</code></pre></div>
+  <div class="warn"><strong>Ojo con <code>docker-scout</code>.</strong> Tras construir imágenes, Docker Desktop analiza
+    vulnerabilidades con este proceso, que puede ocupar varios GB de RAM y dejar el equipo sin memoria.
+    Si todo va muy lento, búscalo en el Administrador de tareas.</div>
+
+  <h3>Si usas un Mac con chip Apple</h3>
+  <p>Funciona, pero las imágenes de Hadoop y Hive sólo existen para <code>amd64</code> y se ejecutan
+     emuladas (más lentas). El resto es nativo.</p>
+</section>
+
+<!-- ================================================================ 1 -->
+<section id="clonar">
+  <h2><span class="step">1</span>Clonar el repositorio</h2>
+  <div class="code"><pre><code>git clone https://github.com/iesataulfoargentasor/bigdata-stack-docker.git
+cd bigdata-stack-docker</code></pre></div>
+
+  <p>Para no repetir <code>-f docker-compose.stack.yml</code> en cada orden, indícale a Compose qué fichero usar:</p>
+  <div class="tabs">
+    <div class="tab-buttons">
+      <button class="t active" data-tab="ps">Windows (PowerShell)</button>
+      <button class="t" data-tab="sh">Linux / macOS</button>
+    </div>
+    <div class="panel active" data-panel="ps"><div class="code"><pre><code>$env:COMPOSE_FILE = "docker-compose.stack.yml"</code></pre></div></div>
+    <div class="panel" data-panel="sh"><div class="code"><pre><code>export COMPOSE_FILE=docker-compose.stack.yml
+export AIRFLOW_UID=$(id -u)    # sólo Linux: Airflow y el lab escriben con tu usuario</code></pre></div></div>
+  </div>
+  <div class="note">El resto de la guía asume que has definido <code>COMPOSE_FILE</code>. Si no, añade
+    <code>-f docker-compose.stack.yml</code> detrás de <code>docker compose</code>.</div>
+</section>
+
+<!-- ================================================================ 2 -->
+<section id="escenario">
+  <h2><span class="step">2</span>Elegir escenario</h2>
+  <p>Elige el <em>profile</em> según lo que vayas a trabajar en la sesión:</p>
+  <div class="cards">
+    <div class="card">
+      <h4>🏞️ lake</h4><div class="tag">Consultar el lago</div>
+      <ul><li>HDFS + YARN</li><li>MinIO</li><li>Hive Metastore + HiveServer2</li><li>Trino</li><li>MySQL <code>retail_db</code> (federación)</li></ul>
+      <p><strong>~5 GB de RAM</strong></p>
+    </div>
+    <div class="card">
+      <h4>🔁 elt</h4><div class="tag">Ingesta, transformación y orquestación</div>
+      <ul><li>MinIO</li><li>lab: JupyterLab, DuckDB, dlt, dbt</li><li>MySQL <code>retail_db</code></li><li>Airflow + Postgres</li></ul>
+      <p><strong>~3 GB de RAM</strong></p>
+    </div>
+    <div class="card">
+      <h4>🧱 all</h4><div class="tag">Todo a la vez</div>
+      <ul><li>Los dos anteriores</li><li>+ client Hadoop con Jupyter</li></ul>
+      <p><strong>≥ 10 GB de RAM</strong></p>
+    </div>
+  </div>
+  <p>También hay profiles de componente (<code>hadoop</code>, <code>minio</code>, <code>hive</code>, <code>trino</code>,
+     <code>lab</code>, <code>airflow</code>) y se pueden combinar:</p>
+  <div class="code"><pre><code>docker compose --profile lake --profile lab up -d</code></pre></div>
+  <pre class="mermaid">
+flowchart LR
+  lake([lake]):::p --> hadoop & minio & hive & trino & retail[(mysql-retail)]
+  elt([elt]):::p --> minio & lab & airflow
+  lab --> retail
+  airflow --> retail
+  classDef p fill:#1f6feb,color:#fff,stroke:#1f6feb
+  </pre>
+</section>
+
+<!-- ================================================================ 3 -->
+<section id="arrancar">
+  <h2><span class="step">3</span>Arrancar</h2>
+  <div class="code"><pre><code># Escenario lago
+docker compose --profile lake up -d --build
+
+# o escenario ELT
+docker compose --profile elt up -d --build</code></pre></div>
+
+  <div class="warn"><strong>La primera vez tarda entre 10 y 20 minutos:</strong> descarga las imágenes de Hadoop
+    desde Docker Hub y construye las de Hive, <code>lab</code> y Airflow. Las siguientes veces basta con
+    <code>docker compose --profile lake up -d</code> (sin <code>--build</code>) y arranca en 2-3 minutos.</div>
+
+  <h3>Qué está pasando</h3>
+  <p>Los servicios arrancan en cadena: cada uno espera a que el anterior esté <em>healthy</em>.</p>
+  <pre class="mermaid">
+flowchart LR
+  nn[namenode] --> dn[dnnm] --> hi[hdfs-init] --> hms[hive-metastore] --> hs2[hiveserver2]
+  my[mysql-metastore] --> hms
+  hms --> tr[trino]
+  mi[minio] --> mii[minio-init] --> tr
+  </pre>
+  <div class="note">Si un <code>up</code> termina con <code>dependency failed to start</code> en un equipo lento,
+    <strong>repite el mismo comando</strong>: continúa donde se quedó.</div>
+</section>
+
+<!-- ================================================================ 4 -->
+<section id="comprobar">
+  <h2><span class="step">4</span>Comprobar</h2>
+  <div class="code"><pre><code>docker compose --profile all ps -a</code></pre></div>
+  <p>Lo correcto es ver los servicios en <code>Up (healthy)</code> y los de inicialización en <code>Exited (0)</code>:</p>
+  <table>
+    <tr><th>Estado esperado</th><th>Contenedores</th></tr>
+    <tr><td>✅ <code>Up (healthy)</code></td><td>namenode, dnnm, resourcemanager, minio, mysql-*, hive-metastore, hiveserver2, trino, postgres-airflow, airflow-*</td></tr>
+    <tr><td>✅ <code>Up</code></td><td>lab, client</td></tr>
+    <tr><td>✅ <code>Exited (0)</code></td><td>hdfs-init, minio-init, retail-init, airflow-init</td></tr>
+    <tr><td>❌ <code>Exited (1)</code> o <code>unhealthy</code></td><td>Mira sus logs: <code>docker compose logs NOMBRE</code></td></tr>
+  </table>
+
+  <h3>Interfaces web</h3>
+  <table>
+    <tr><th>Servicio</th><th>URL</th><th>Credenciales</th><th>Escenario</th></tr>
+    <tr><td>HDFS NameNode</td><td><a href="http://localhost:9870">localhost:9870</a></td><td>—</td><td>lake</td></tr>
+    <tr><td>YARN ResourceManager</td><td><a href="http://localhost:8088">localhost:8088</a></td><td>—</td><td>lake</td></tr>
+    <tr><td>Trino</td><td><a href="http://localhost:8080">localhost:8080</a></td><td>cualquier usuario</td><td>lake</td></tr>
+    <tr><td>HiveServer2</td><td><a href="http://localhost:10002">localhost:10002</a></td><td>—</td><td>lake</td></tr>
+    <tr><td>MinIO (consola)</td><td><a href="http://localhost:9001">localhost:9001</a></td><td><code>minioadmin</code> / <code>minioadmin</code></td><td>lake, elt</td></tr>
+    <tr><td>JupyterLab (lab)</td><td><a href="http://localhost:8888">localhost:8888</a></td><td>sin token</td><td>elt</td></tr>
+    <tr><td>Airflow</td><td><a href="http://localhost:8082">localhost:8082</a></td><td><code>admin</code> / <code>admin</code></td><td>elt</td></tr>
+    <tr><td>Jupyter del client Hadoop</td><td><a href="http://localhost:8889">localhost:8889</a></td><td>sin token</td><td>hadoop, all</td></tr>
+  </table>
+</section>
+
+<!-- ================================================================ 5 -->
+<section id="probar-lake">
+  <h2><span class="step">5</span>Primera prueba: el lago</h2>
+  <p>Abre la consola de Trino:</p>
+  <div class="code"><pre><code>docker exec -it trino trino</code></pre></div>
+  <p>Y ejecuta estas sentencias. Trino escribe Parquet, registra la tabla en el metastore y la vuelve a leer:</p>
+  <div class="code"><pre><code>-- En HDFS
+CREATE SCHEMA hive.demo WITH (location = 'hdfs://namenode:9000/user/hive/warehouse/demo.db');
+CREATE TABLE hive.demo.nation WITH (format = 'PARQUET') AS SELECT * FROM tpch.tiny.nation;
+SELECT count(*) FROM hive.demo.nation;      -- 25
+
+-- En MinIO
+CREATE SCHEMA hive.minio WITH (location = 's3a://warehouse/minio.db');
+CREATE TABLE hive.minio.region WITH (format = 'PARQUET') AS SELECT * FROM tpch.tiny.region;
+SELECT count(*) FROM hive.minio.region;     -- 5
+
+-- Federación con MySQL
+SELECT c.customer_city, count(*) AS pedidos
+FROM mysql.retail_db.orders o
+JOIN mysql.retail_db.customers c ON o.order_customer_id = c.customer_id
+GROUP BY 1 ORDER BY 2 DESC LIMIT 5;</code></pre></div>
+
+  <p>El catálogo es compartido: lo que crea Trino lo ve HiveServer2.</p>
+  <div class="code"><pre><code>docker exec -it hiveserver2 beeline -u "jdbc:hive2://localhost:10000/" -e "SHOW DATABASES; SELECT count(*) FROM demo.nation;"</code></pre></div>
+  <div class="ok">✅ Si ves <code>25</code> desde Trino y desde Hive, el lago funciona: HDFS, MinIO, metastore y los dos motores.</div>
+</section>
+
+<!-- ================================================================ 6 -->
+<section id="probar-elt">
+  <h2><span class="step">6</span>Primera prueba: ELT</h2>
+  <pre class="mermaid">
+flowchart LR
+  MY[("mysql-retail")] -- "dlt (EL)" --> RAW["retail_raw"]
+  RAW -- "dbt (T)" --> STG["main_staging"] --> MART["main_marts"]
+  AF{{"Airflow"}} -. orquesta .-> MY
+  </pre>
+  <h3>A mano, en el nodo lab</h3>
+  <div class="code"><pre><code>docker exec lab python /workspace/dlt/mysql_to_duckdb.py
+docker exec -w /workspace/dbt/retail lab dbt run
+docker exec -w /workspace/dbt/retail lab dbt test
+docker exec lab duckdb /workspace/data/retail.duckdb -c "SELECT * FROM main_marts.ventas_por_ciudad LIMIT 5;"</code></pre></div>
+
+  <h3>Con Airflow</h3>
+  <ol>
+    <li>Entra en <a href="http://localhost:8082">localhost:8082</a> con <code>admin</code> / <code>admin</code>.</li>
+    <li>Activa el DAG <code>elt_retail</code> con el interruptor de la izquierda.</li>
+    <li>Pulsa ▶ <em>Trigger DAG</em> y sigue las tareas <code>dlt_mysql_a_duckdb → dbt_run → dbt_test</code>.</li>
+  </ol>
+  <div class="warn">DuckDB admite un único proceso escribiendo. Si un cuaderno del lab tiene abierto
+    <code>retail.duckdb</code>, la tarea de Airflow fallará hasta que cierres esa conexión.</div>
+  <div class="ok">✅ Si las tres tareas terminan en verde, el ELT completo funciona.</div>
+</section>
+
+<!-- ================================================================ 7 -->
+<section id="operacion">
+  <h2><span class="step">7</span>Apagar, encender, reiniciar</h2>
+  <table>
+    <tr><th>Quiero…</th><th>Comando</th></tr>
+    <tr><td>Apagar al terminar la clase (conserva todo)</td><td><code>docker compose --profile all stop</code></td></tr>
+    <tr><td>Encender en la siguiente sesión</td><td><code>docker compose --profile lake start</code></td></tr>
+    <tr><td>Cambiar de escenario</td><td><code>docker compose --profile lake stop</code> y <code>docker compose --profile elt up -d</code></td></tr>
+    <tr><td>Ver logs de un servicio</td><td><code>docker compose logs -f trino</code></td></tr>
+    <tr><td>Recargar <code>retail_db</code></td><td><code>docker compose run --rm retail-init python /workspace/init/retail_init.py --force</code></td></tr>
+    <tr><td>Borrar contenedores (los datos quedan)</td><td><code>docker compose --profile all down</code></td></tr>
+    <tr><td>⚠️ Empezar de cero (borra HDFS, MinIO, MySQL…)</td><td><code>docker compose --profile all down -v</code></td></tr>
+  </table>
+  <div class="note">Usa <code>stop</code>/<code>start</code> en el día a día. Que los contenedores de Hadoop
+    queden en <code>Exited (137)</code> tras un <code>stop</code> es normal.</div>
+</section>
+
+<!-- ================================================================ ? -->
+<section id="problemas">
+  <h2><span class="step">?</span>Problemas frecuentes</h2>
+
+  <details><summary><code>docker compose up</code> no arranca nada</summary>
+    <p>Falta el profile. Usa <code>--profile lake</code>, <code>--profile elt</code> o <code>--profile all</code>.</p></details>
+
+  <details><summary>The container name "/namenode" is already in use</summary>
+    <p>Está levantado el clúster mínimo (<code>docker-compose.yml</code>), que usa los mismos nombres.
+       Apágalo con <code>docker compose -f docker-compose.yml down</code> y repite.</p></details>
+
+  <details><summary>Ports are not available: 8080, 3306…</summary>
+    <p>Otra aplicación usa ese puerto: Kafka UI (8080), un MySQL instalado en el equipo (3306)…
+       Párala o cambia el puerto publicado en <code>docker-compose.stack.yml</code>.</p></details>
+
+  <details><summary>namenode unhealthy / dependency failed to start</summary>
+    <p>El equipo va justo de recursos. Espera un minuto y repite el mismo <code>up -d</code>.
+       Levanta <code>lake</code> y <code>elt</code> por separado en vez de <code>all</code>.</p></details>
+
+  <details><summary>Trino: hive-metastore:9083 Read timed out</summary>
+    <p>El metastore aún no está listo o el equipo está saturado. Comprueba con
+       <code>docker compose ps</code> que <code>hive-metastore</code> está <em>healthy</em> y reintenta.</p></details>
+
+  <details><summary>Trino: Partition location does not exist</summary>
+    <p>Un <code>CREATE TABLE … AS</code> se interrumpió y quedó la tabla registrada sin datos.
+       Haz <code>DROP TABLE</code> y vuelve a crearla.</p></details>
+
+  <details><summary>Airflow: Cannot open file "/workspace/data/retail.duckdb"</summary>
+    <p>Lo tiene abierto un cuaderno del lab, o (en Linux) <code>AIRFLOW_UID</code> no coincide con tu
+       usuario. Cierra la conexión del cuaderno y define <code>export AIRFLOW_UID=$(id -u)</code> antes del <code>up</code>.</p></details>
+
+  <details><summary>Docker Desktop: Internal Server Error</summary>
+    <p>Casi siempre es disco lleno. Libera espacio (<code>docker system df</code>, <code>docker image prune</code>)
+       o mueve el disco de Docker a otra unidad.</p></details>
+</section>
+
+<footer>
+  <p>Arquitectura y profiles inspirados en
+     <a href="https://aitor-medrano.github.io/iabd/de/stack-docker-de.html">Stack Docker para Ingeniería de datos</a>
+     de Aitor Medrano. Clúster Hadoop y adaptación: IES Ataúlfo Argenta, Big Data Aplicado.</p>
+  <p>Stack docente: credenciales triviales y permisos abiertos. No lo expongas a Internet.</p>
+</footer>
+
+</main>
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "default", securityLevel: "loose" });
+</script>
+<script>
+  document.querySelectorAll(".code").forEach(function (block) {
+    var btn = document.createElement("button");
+    btn.className = "copy";
+    btn.textContent = "Copiar";
+    btn.addEventListener("click", function () {
+      navigator.clipboard.writeText(block.querySelector("code").innerText).then(function () {
+        btn.textContent = "¡Copiado!";
+        setTimeout(function () { btn.textContent = "Copiar"; }, 1500);
+      });
+    });
+    block.appendChild(btn);
+  });
+  document.querySelectorAll(".tabs").forEach(function (tabs) {
+    tabs.querySelectorAll("button.t").forEach(function (b) {
+      b.addEventListener("click", function () {
+        tabs.querySelectorAll("button.t").forEach(function (x) { x.classList.remove("active"); });
+        tabs.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
+        b.classList.add("active");
+        tabs.querySelector('[data-panel="' + b.dataset.tab + '"]').classList.add("active");
+      });
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: retail_raw
+    description: Copia de retail_db que deja dlt en DuckDB, sin transformar.
+    schema: retail_raw
+    tables:
+      - name: departments
+      - name: categories
+      - name: products
+      - name: customers
+      - name: orders
+      - name: order_items

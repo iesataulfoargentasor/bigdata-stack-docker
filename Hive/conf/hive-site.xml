@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!-- Configuración común de hive-metastore y hiveserver2.
+     Sustituye al hive-site.xml de la imagen, por eso repite sus valores de Tez.
+     La conexión del metastore con MySQL va en SERVICE_OPTS (docker-compose.stack.yml). -->
+<configuration>
+  <property>
+    <!-- Catálogo compartido: Trino, HiveServer2 y Spark preguntan aquí -->
+    <name>hive.metastore.uris</name>
+    <value>thrift://hive-metastore:9083</value>
+  </property>
+  <property>
+    <name>hive.metastore.warehouse.dir</name>
+    <value>hdfs://namenode:9000/user/hive/warehouse</value>
+  </property>
+  <property>
+    <!-- Lo crea hdfs-init con permisos 777 -->
+    <name>hive.exec.scratchdir</name>
+    <value>/tmp/hive</value>
+  </property>
+  <property>
+    <name>hive.user.install.directory</name>
+    <value>/tmp/hive/install_dir</value>
+  </property>
+
+  <property>
+    <name>hive.server2.enable.doAs</name>
+    <value>false</value>
+  </property>
+  <property>
+    <!-- Las consultas se ejecutan con Tez dentro del contenedor de hiveserver2, no en YARN -->
+    <name>hive.execution.engine</name>
+    <value>tez</value>
+  </property>
+  <property>
+    <name>tez.local.mode</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>mapreduce.framework.name</name>
+    <value>local</value>
+  </property>
+  <property>
+    <name>tez.runtime.optimize.local.fetch</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hive.tez.exec.inplace.progress</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>hive.exec.submit.local.task.via.child</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>metastore.metastore.event.db.notification.api.auth</name>
+    <value>false</value>
+  </property>
+</configuration>

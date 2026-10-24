@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!-- Hive habla con los dos almacenamientos del lago:
+     HDFS del clúster (hdfs://namenode:9000) y MinIO (s3a://bucket/...). -->
+<configuration>
+  <property>
+    <name>fs.defaultFS</name>
+    <value>hdfs://namenode:9000/</value>
+  </property>
+
+  <property>
+    <name>fs.s3a.impl</name>
+    <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+  </property>
+  <property>
+    <name>fs.s3a.endpoint</name>
+    <value>http://minio:9000</value>
+  </property>
+  <property>
+    <name>fs.s3a.endpoint.region</name>
+    <value>us-east-1</value>
+  </property>
+  <!-- Las credenciales van en AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY (docker-compose.stack.yml):
+       Hive quita fs.s3a.access.key y fs.s3a.secret.key de la configuración que pasa a Tez. -->
+  <property>
+    <!-- MinIO usa http://minio:9000/bucket, no http://bucket.minio:9000 -->
+    <name>fs.s3a.path.style.access</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>fs.s3a.connection.ssl.enabled</name>
+    <value>false</value>
+  </property>
+</configuration>
