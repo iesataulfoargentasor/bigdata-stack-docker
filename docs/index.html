@@ -244,14 +244,15 @@ flowchart LR
 <section id="arrancar">
   <h2><span class="step">3</span>Arrancar</h2>
   <div class="code"><pre><code># Escenario lago
-docker compose --profile lake up -d --build
+docker compose --profile lake up -d
 
 # o escenario ELT
-docker compose --profile elt up -d --build</code></pre></div>
+docker compose --profile elt up -d</code></pre></div>
 
-  <div class="warn"><strong>La primera vez tarda entre 10 y 20 minutos:</strong> descarga las imágenes de Hadoop
-    desde Docker Hub y construye las de Hive, <code>lab</code> y Airflow. Las siguientes veces basta con
-    <code>docker compose --profile lake up -d</code> (sin <code>--build</code>) y arranca en 2-3 minutos.</div>
+  <div class="warn"><strong>La primera vez descarga unos 12 GB</strong> de imágenes
+    (<code>profesorbigdata/*:v2.0</code> en Docker Hub) y el tiempo depende de la conexión.
+    Las siguientes veces arranca en 2-3 minutos. <code>--build</code> sólo hace falta si has
+    modificado un Dockerfile y quieres reconstruir la imagen en tu equipo.</div>
 
   <h3>Qué está pasando</h3>
   <p>Los servicios arrancan en cadena: cada uno espera a que el anterior esté <em>healthy</em>.</p>

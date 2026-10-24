@@ -216,17 +216,18 @@ git clone https://github.com/iesataulfoargentasor/bigdata-stack-docker.git
 cd bigdata-stack-docker
 
 # Escenario "lago": HDFS + YARN + MinIO + Hive + Trino
-docker compose -f docker-compose.stack.yml --profile lake up -d --build
+docker compose -f docker-compose.stack.yml --profile lake up -d
 
 # Escenario "ELT": MinIO + lab (DuckDB/dlt/dbt) + Airflow
-docker compose -f docker-compose.stack.yml --profile elt up -d --build
+docker compose -f docker-compose.stack.yml --profile elt up -d
 
 # Estado
 docker compose -f docker-compose.stack.yml --profile all ps -a
 ```
 
-La **primera vez** tarda: descarga las imágenes y construye las de Hive, `lab` y Airflow
-(10-20 minutos según la conexión). Las siguientes veces arranca en 2-3 minutos.
+La **primera vez** descarga las imágenes de Docker Hub (`profesorbigdata/*:v2.0`, unos 12 GB
+entre los dos escenarios) y tarda según la conexión. Las siguientes veces arranca en 2-3 minutos.
+`--build` sólo hace falta si has cambiado un Dockerfile y quieres reconstruir en local.
 
 > **Atajo para no escribir `-f` siempre:**
 > PowerShell: `$env:COMPOSE_FILE="docker-compose.stack.yml"` ·

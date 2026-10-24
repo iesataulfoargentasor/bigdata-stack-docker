@@ -19,14 +19,13 @@
 #   elt       minio + lab + airflow
 #   all       todo
 #
-# La imagen base de Hadoop (profesorbigdata/hadoop-base-image:v2.0) se descarga de
-# Docker Hub. Para construirla en local:
-#   docker compose -f docker-compose.stack.yml --profile build build hadoop-base
+# Todas las imágenes profesorbigdata/*:v2.0 están en Docker Hub. pull_policy: missing
+# las descarga si no están en el equipo. --build las reconstruye en local.
 #
-#   docker compose -f docker-compose.stack.yml --profile lake up -d --build
-#   docker compose -f docker-compose.stack.yml --profile elt up -d --build
+#   docker compose -f docker-compose.stack.yml --profile lake up -d
+#   docker compose -f docker-compose.stack.yml --profile elt up -d
 #   docker compose -f docker-compose.stack.yml --profile lake --profile lab up -d
-#   docker compose -f docker-compose.stack.yml --profile all up -d --build
+#   docker compose -f docker-compose.stack.yml --profile all up -d
 #
 # Entre sesiones: stop/start. down borra contenedores y red (los volúmenes no, salvo con -v).
 #   docker compose -f docker-compose.stack.yml --profile all stop
@@ -64,6 +63,8 @@ volumes:
 
 x-hive-common: &hive-common
   image: profesorbigdata/hive-image-profesor:v2.0
+  # Si la imagen no está en el equipo, se descarga de Docker Hub. --build la reconstruye.
+  pull_policy: missing
   build: ./Hive
   volumes:
     - ./Hive/conf:/hive_custom_conf:ro
@@ -72,6 +73,7 @@ x-hive-common: &hive-common
 
 x-lab-common: &lab-common
   image: profesorbigdata/lab-image-profesor:v2.0
+  pull_policy: missing
   build: ./Lab
   # Mismo usuario que Airflow: los dos escriben /workspace/data/retail.duckdb
   user: "${AIRFLOW_UID:-50000}:0"
@@ -82,6 +84,7 @@ x-lab-common: &lab-common
 
 x-airflow-common: &airflow-common
   image: profesorbigdata/airflow-image-profesor:v2.0
+  pull_policy: missing
   build: ./Airflow
   user: "${AIRFLOW_UID:-50000}:0"
   environment: &airflow-env
@@ -108,12 +111,14 @@ services:
   hadoop-base:
     profiles: ["build"]
     image: profesorbigdata/hadoop-base-image:v2.0
+    pull_policy: missing
     build:
       context: ./Base
 
   namenode:
     profiles: ["hadoop", "lake", "all"]
     image: profesorbigdata/hadoop-namenode-image-profesor:v2.0
+    pull_policy: missing
     build: ./NameNode
     container_name: namenode
     hostname: namenode
@@ -135,6 +140,7 @@ services:
   resourcemanager:
     profiles: ["hadoop", "lake", "all"]
     image: profesorbigdata/hadoop-resourcemanager-image-profesor:v2.0
+    pull_policy: missing
     build: ./ResourceManager
     container_name: resourcemanager
     hostname: resourcemanager
@@ -153,6 +159,7 @@ services:
   dnnm:
     profiles: ["hadoop", "lake", "all"]
     image: profesorbigdata/hadoop-datanode-image-profesor:v2.0
+    pull_policy: missing
     build: ./DataNode-NodeManager
     container_name: dnnm
     hostname: dnnm
@@ -179,6 +186,7 @@ services:
   client:
     profiles: ["hadoop", "all"]
     image: profesorbigdata/hadoop-client-image-profesor:v2.0
+    pull_policy: missing
     build: ./Client
     container_name: client
     hostname: client
