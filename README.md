@@ -480,23 +480,32 @@ abierto a Internet deja HDFS, MinIO y Airflow al alcance de cualquiera.
 Funciona con CG-NAT y cuando el instituto sólo permite salir por el 443. Los alumnos usan las
 mismas consolas, con la IP Tailscale del equipo de casa en lugar de `localhost`.
 
-En el Ubuntu 24.04 de casa:
+En el Ubuntu de casa, si Tailscale ya está instalado (por ejemplo para el escritorio remoto),
+no lo reinstales:
 
 ```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
+tailscale status
 tailscale ip -4
 ```
 
-La cuenta tiene que ser de un correo público (un Gmail de la clase). Con el dominio del instituto,
-Tailscale abre una prueba de empresa de 14 días. En el panel, *Settings → Keys*, crea una auth key
-reutilizable y con caducidad: une los PCs del aula sin darles la contraseña del panel.
+Esa IP es la misma del escritorio remoto. Antes de repartir el acceso, cambia la política de
+Tailscale: la de por defecto (`"src": ["*"]`) dejaría el puerto 3389 abierto a los alumnos. La
+política y la auth key con etiqueta `tag:aula` están en la
+[guía](https://iesataulfoargentasor.github.io/bigdata-stack-docker/#aula). Tus equipos siguen
+entrando a todo; los del aula solo a los puertos del stack.
 
-En cada PC del aula (hace falta permiso de instalación):
+Windows 11, en PowerShell como administrador:
 
 ```powershell
 winget install tailscale.tailscale
 tailscale up --auth-key=tskey-auth-XXXXXXXX --unattended
+```
+
+Ubuntu 22.04:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --auth-key=tskey-auth-XXXXXXXX
 ```
 
 | Consola | Desde el aula |

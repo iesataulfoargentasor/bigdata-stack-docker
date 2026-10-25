@@ -380,29 +380,54 @@ docker exec lab duckdb /workspace/data/retail.duckdb -c "SELECT * FROM main_mart
      cambiando <code>localhost</code> por la IP Tailscale del equipo de casa.</p>
 
   <h3>En el Ubuntu de casa</h3>
-  <div class="code"><pre><code>curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
+  <p>Si ya usas Tailscale para el escritorio remoto, no lo reinstales. Comprueba que sigue conectado
+     y anota la misma IP:</p>
+  <div class="code"><pre><code>tailscale status
 tailscale ip -4</code></pre></div>
-  <p>Al hacer <code>tailscale up</code> se abre el navegador para iniciar sesión. Usa una cuenta de
-     Gmail creada para la clase. Si entras con el correo del instituto (un dominio propio), Tailscale
-     activa una prueba de empresa de 14 días y luego deja de ser gratis.</p>
-  <p>Anota la IP que devuelve <code>tailscale ip -4</code>, algo como <code>100.89.12.34</code>.
-     El equipo tiene que seguir encendido durante la clase. En Ubuntu escritorio, desactiva la
-     suspensión:</p>
+  <p>Tiene que seguir encendido durante la clase. En el escritorio, desactiva la suspensión:</p>
   <div class="code"><pre><code>sudo mkdir -p /etc/systemd/logind.conf.d
 printf '[Login]\nIdleAction=ignore\nHandleLidSwitch=ignore\n' | sudo tee /etc/systemd/logind.conf.d/nosleep.conf
 sudo systemctl restart systemd-logind
 gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'</code></pre></div>
 
-  <h3>Clave para los ordenadores del aula</h3>
-  <p>En <a href="https://login.tailscale.com/admin/settings/keys">login.tailscale.com → Settings → Keys</a>
-     genera una <em>auth key</em> reutilizable, con caducidad (un trimestre basta). Con esa clave el
-     alumno une el PC a la red, pero no entra en el panel de administración. No la subas al repositorio.</p>
+  <h3>Que el aula no llegue al escritorio remoto</h3>
+  <p>La política por defecto de Tailscale deja pasar todo. Un PC del aula en esa red podría abrir
+     también el escritorio remoto (3389) o SSH. En
+     <a href="https://login.tailscale.com/admin/acls">Access controls</a>, si la regla actual es
+     <code>"src": ["*"]</code>, sustituye el fichero por este y cambia <code>100.x.x.x</code> por la
+     IP del paso anterior. Tus propios equipos siguen teniendo acceso completo; los del aula, solo
+     a los puertos del stack.</p>
+  <div class="code"><pre><code>{
+  "tagOwners": {
+    "tag:aula": ["autogroup:admin"],
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["autogroup:member"],
+      "dst": ["*:*"],
+    },
+    {
+      "action": "accept",
+      "src": ["tag:aula"],
+      "dst": ["100.x.x.x:9870,9864,8088,8042,9000,9001,8080,8888,8889,8082,10000,10002,9083,3306,3307"],
+    },
+  ],
+}</code></pre></div>
+  <p>Guarda la política. Luego, en <a href="https://login.tailscale.com/admin/settings/keys">Settings → Keys</a>,
+     genera una auth key <strong>reutilizable</strong>, con caducidad de un trimestre y con la etiqueta
+     <code>tag:aula</code>. No la subas al repositorio.</p>
 
-  <h3>En cada PC del aula</h3>
-  <p>Hace falta permiso para instalar. En Windows:</p>
+  <h3>Windows 11</h3>
+  <p>PowerShell como administrador:</p>
   <div class="code"><pre><code>winget install tailscale.tailscale
 tailscale up --auth-key=tskey-auth-XXXXXXXX --unattended</code></pre></div>
+
+  <h3>Ubuntu 22.04</h3>
+  <div class="code"><pre><code>curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --auth-key=tskey-auth-XXXXXXXX</code></pre></div>
+  <p>Si ese PC ya estaba unido a otra cuenta de Tailscale: <code>sudo tailscale logout</code> y repite
+     el <code>up</code>.</p>
   <p>A partir de ahí, en el navegador, con la IP de casa:</p>
   <table>
     <tr><th>Consola</th><th>Dirección</th><th>Credenciales</th></tr>
