@@ -391,26 +391,31 @@ sudo systemctl restart systemd-logind
 gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'</code></pre></div>
 
   <h3>Que el aula no llegue al escritorio remoto</h3>
-  <p>La política por defecto de Tailscale deja pasar todo. Un PC del aula en esa red podría abrir
-     también el escritorio remoto (3389) o SSH. En
-     <a href="https://login.tailscale.com/admin/acls">Access controls</a>, si la regla actual es
-     <code>"src": ["*"]</code>, sustituye el fichero por este y cambia <code>100.x.x.x</code> por la
-     IP del paso anterior. Tus propios equipos siguen teniendo acceso completo; los del aula, solo
-     a los puertos del stack.</p>
+  <p>En <em>Access controls → Policies</em> verás una sola regla: <em>All users and devices</em> puede
+     entrar a todo, en todos los puertos. Con esa regla, un PC del aula también podría abrir el
+     escritorio remoto. Abre <strong>JSON editor</strong> (en el menú de la izquierda) y sustituye
+     el contenido por este, cambiando <code>100.x.x.x</code> por la IP de casa. Tus equipos siguen
+     teniendo acceso completo; los del aula, solo a los puertos del stack.</p>
   <div class="code"><pre><code>{
   "tagOwners": {
     "tag:aula": ["autogroup:admin"],
   },
-  "acls": [
+  "grants": [
     {
-      "action": "accept",
       "src": ["autogroup:member"],
-      "dst": ["*:*"],
+      "dst": ["*"],
+      "ip": ["*"],
     },
     {
-      "action": "accept",
       "src": ["tag:aula"],
-      "dst": ["100.x.x.x:9870,9864,8088,8042,9000,9001,8080,8888,8889,8082,10000,10002,9083,3306,3307"],
+      "dst": ["100.x.x.x"],
+      "ip": [
+        "tcp:9870", "tcp:9864", "tcp:8088", "tcp:8042",
+        "tcp:9000", "tcp:9001", "tcp:8080",
+        "tcp:8888", "tcp:8889", "tcp:8082",
+        "tcp:10000", "tcp:10002", "tcp:9083",
+        "tcp:3306", "tcp:3307"
+      ],
     },
   ],
 }</code></pre></div>
