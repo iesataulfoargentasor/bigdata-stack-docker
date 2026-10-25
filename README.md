@@ -26,7 +26,7 @@ Parte del clúster Hadoop del profesor (imágenes `profesorbigdata/*:v2.0`) y a�
 7. [Recorrido 1: consultar el lago (`lake`)](#recorrido-1-consultar-el-lago-lake)
 8. [Recorrido 2: ELT con dlt, dbt y Airflow (`elt`)](#recorrido-2-elt-con-dlt-dbt-y-airflow-elt)
 9. [Operación diaria](#operación-diaria)
-10. [Acceso desde el aula](#acceso-desde-el-aula)
+10. [Acceso desde el aula (Tailscale)](#acceso-desde-el-aula)
 11. [Estructura del repositorio](#estructura-del-repositorio)
 12. [Decisiones técnicas](#decisiones-técnicas)
 13. [Solución de problemas](#solución-de-problemas)
@@ -472,58 +472,16 @@ con.sql("SELECT * FROM 's3://processed/rango.parquet'").show()
 
 ## Acceso desde el aula
 
-El stack publicado en el equipo de casa no es visible desde el instituto: son dos redes distintas.
-Tampoco hay que abrir los puertos en el router. Las credenciales son las de clase y un puerto
-abierto a Internet deja HDFS, MinIO y Airflow al alcance de cualquiera.
+El stack del Ubuntu de casa no se ve desde el instituto: son dos redes distintas. No hay que abrir
+el router ni el escritorio remoto (RDP) ni SSH. Los alumnos consultan solo los puertos del stack.
 
-[Tailscale](https://tailscale.com/) crea una red privada entre ese Ubuntu y los PCs del aula.
-Funciona con CG-NAT y cuando el instituto sólo permite salir por el 443. Los alumnos usan las
-mismas consolas, con la IP Tailscale del equipo de casa en lugar de `localhost`.
+La red privada es [Tailscale](https://tailscale.com/), la misma IP `100.x` del escritorio remoto.
+El procedimiento para repetirlo —casa en Ubuntu 24.04, política en el editor de grants, clave
+`tag:aula`, Windows 10, Windows 11 y Ubuntu 22.04 LTS del aula— está en un único sitio:
 
-En el Ubuntu de casa, si Tailscale ya está instalado (por ejemplo para el escritorio remoto),
-no lo reinstales:
+**[Repetir el acceso de aula con Tailscale](https://iesataulfoargentasor.github.io/bigdata-stack-docker/#tailscale)**
 
-```bash
-tailscale status
-tailscale ip -4
-```
-
-Esa IP es la misma del escritorio remoto. Antes de repartir el acceso, cambia la política de
-Tailscale: la de por defecto (`"src": ["*"]`) dejaría el puerto 3389 abierto a los alumnos. La
-política y la auth key con etiqueta `tag:aula` están en la
-[guía](https://iesataulfoargentasor.github.io/bigdata-stack-docker/#aula). Tus equipos siguen
-entrando a todo; los del aula solo a los puertos del stack.
-
-Windows 11, en PowerShell como administrador:
-
-```powershell
-winget install tailscale.tailscale
-tailscale up --auth-key=tskey-auth-XXXXXXXX --unattended
-```
-
-Ubuntu 22.04:
-
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --auth-key=tskey-auth-XXXXXXXX
-```
-
-| Consola | Desde el aula |
-|---|---|
-| NameNode | `http://100.x.x.x:9870` |
-| YARN | `http://100.x.x.x:8088` |
-| MinIO | `http://100.x.x.x:9001` (`minioadmin` / `minioadmin`) |
-| Trino | `http://100.x.x.x:8080` |
-| HiveServer2 | `http://100.x.x.x:10002`, JDBC en `:10000` |
-| JupyterLab / Jupyter Hadoop | `:8888` y `:8889` |
-| Airflow | `http://100.x.x.x:8082` (`admin` / `admin`) |
-| MySQL `retail_db` / catálogo | `:3307` (`retail`) y `:3306` (`hive`) |
-
-Deja el equipo de casa encendido y sin suspensión durante la clase. Es un único stack compartido:
-un `DROP` o un borrado en HDFS afecta a todo el grupo.
-
-Los pasos, incluida la suspensión de Ubuntu, están en la
-[guía de despliegue](https://iesataulfoargentasor.github.io/bigdata-stack-docker/#aula).
+Es un único stack compartido: un borrado en HDFS, MinIO o Airflow lo ve toda la clase.
 
 ---
 

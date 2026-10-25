@@ -89,7 +89,7 @@
   <a href="#probar-lake"><span class="num">5</span>Primera prueba: el lago</a>
   <a href="#probar-elt"><span class="num">6</span>Primera prueba: ELT</a>
   <a href="#operacion"><span class="num">7</span>Apagar, encender, reiniciar</a>
-  <a href="#aula"><span class="num">8</span>Acceso desde el aula</a>
+  <a href="#tailscale"><span class="num">8</span>Acceso con Tailscale</a>
   <a href="#problemas"><span class="num">?</span>Problemas frecuentes</a>
   <br>
   <a href="https://github.com/iesataulfoargentasor/bigdata-stack-docker">📦 Repositorio</a>
@@ -367,90 +367,124 @@ docker exec lab duckdb /workspace/data/retail.duckdb -c "SELECT * FROM main_mart
 
 <!-- ================================================================ 8 -->
 <section id="aula">
-  <h2><span class="step">8</span>Acceso desde el aula</h2>
-  <p>El equipo de casa y los ordenadores del aula están en redes distintas. Los puertos de Docker
-     no se ven desde el instituto aunque el stack esté arrancado.</p>
-  <div class="warn"><strong>No abras esos puertos en el router de casa.</strong> Las contraseñas son las de
-    clase (<code>admin</code>, <code>minioadmin</code>, <code>retail</code>) y Jupyter no pide token.
-    Cualquiera en Internet podría borrar HDFS o lanzar trabajos. El acceso tiene que quedar limitado
-    a los equipos del aula.</div>
-  <p>La forma de conseguirlo es <a href="https://tailscale.com/">Tailscale</a>: una red privada entre
-     el Ubuntu de casa y los PCs del aula. Funciona aunque el operador use CG-NAT y aunque el
-     instituto sólo deje salir por el puerto 443. Después, cada consola se abre igual que en local,
-     cambiando <code>localhost</code> por la IP Tailscale del equipo de casa.</p>
+  <h2 id="tailscale"><span class="step">8</span>Repetir el acceso de aula con Tailscale</h2>
+  <p>Recordatorio para volver a dar el stack a la clase. El equipo de casa es un
+     <strong>Ubuntu 24.04</strong> con Tailscale ya instalada: la misma IP <code>100.x</code> del
+     escritorio remoto. Desde el aula (Windows 11, Windows 10 o Ubuntu 22.04 LTS Desktop) solo se
+     consultan los puertos del stack en esa IP. Sin abrir el router. Sin RDP ni SSH.</p>
+  <p><a href="https://tailscale.com/">Tailscale</a> crea la red privada entre ese Ubuntu y los PCs
+     del aula. Funciona con CG-NAT y cuando el instituto solo deja salir por el 443. Cada consola
+     se abre como en local, cambiando <code>localhost</code> por la IP <code>100.x</code> de casa,
+     no por la IP de la LAN del aula.</p>
+  <div class="warn"><strong>No abras los puertos del stack en el router de casa</strong> y no expongas
+    RDP (3389) ni SSH. Las contraseñas son las de clase (<code>admin</code>, <code>minioadmin</code>,
+    <code>retail</code>) y Jupyter no pide token. Cualquiera en Internet podría borrar HDFS o lanzar
+    trabajos.</div>
 
-  <h3>En el Ubuntu de casa</h3>
-  <p>Si ya usas Tailscale para el escritorio remoto, no lo reinstales. Comprueba que sigue conectado
-     y anota la misma IP:</p>
+  <h3>Casa (Ubuntu 24.04)</h3>
+  <p>Tailscale ya está instalada por el escritorio remoto: no la reinstales. Comprueba que sigue
+     conectada y anota la IP. Esa IP es el destino de la política.</p>
   <div class="code"><pre><code>tailscale status
 tailscale ip -4</code></pre></div>
-  <p>Tiene que seguir encendido durante la clase. En el escritorio, desactiva la suspensión:</p>
+  <p>El equipo tiene que seguir encendido durante la clase. Evita la suspensión: en logind,
+     <code>IdleAction=ignore</code> y <code>HandleLidSwitch=ignore</code>; en el escritorio,
+     <code>sleep-inactive-ac-type</code> en <code>nothing</code>.</p>
   <div class="code"><pre><code>sudo mkdir -p /etc/systemd/logind.conf.d
 printf '[Login]\nIdleAction=ignore\nHandleLidSwitch=ignore\n' | sudo tee /etc/systemd/logind.conf.d/nosleep.conf
 sudo systemctl restart systemd-logind
 gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'</code></pre></div>
 
-  <h3>Que el aula no llegue al escritorio remoto</h3>
-  <p>En <em>Access controls → Policies</em> verás una sola regla: <em>All users and devices</em> puede
-     entrar a todo, en todos los puertos. Con esa regla, un PC del aula también podría abrir el
-     escritorio remoto. Abre <strong>JSON editor</strong> (en el menú de la izquierda) y sustituye
-     el contenido por este, cambiando <code>100.x.x.x</code> por la IP de casa. Tus equipos siguen
-     teniendo acceso completo; los del aula, solo a los puertos del stack.</p>
+  <h3>Política en el editor de grants</h3>
+  <p>La cuenta es personal (Gmail), plan Free. En la consola abre el <strong>editor de grants</strong>
+     (el JSON de la política actual). No uses las ACL antiguas. La política por defecto, «allow all»,
+     dejaría RDP y SSH visibles en la tailnet: no sirve. Tus equipos siguen entrando a todo; los del
+     aula, solo a los puertos del stack. Pega este JSON y sustituye <code>100.x.x.x</code> por la IP real:</p>
   <div class="code"><pre><code>{
-  "tagOwners": {
-    "tag:aula": ["autogroup:admin"],
-  },
+  "tagOwners": { "tag:aula": ["autogroup:admin"] },
   "grants": [
-    {
-      "src": ["autogroup:member"],
-      "dst": ["*"],
-      "ip": ["*"],
-    },
+    { "src": ["autogroup:member"], "dst": ["*"], "ip": ["*"] },
     {
       "src": ["tag:aula"],
       "dst": ["100.x.x.x"],
       "ip": [
         "tcp:9870", "tcp:9864", "tcp:8088", "tcp:8042",
-        "tcp:9000", "tcp:9001", "tcp:8080",
-        "tcp:8888", "tcp:8889", "tcp:8082",
-        "tcp:10000", "tcp:10002", "tcp:9083",
-        "tcp:3306", "tcp:3307"
-      ],
-    },
-  ],
+        "tcp:9000", "tcp:9001", "tcp:8080", "tcp:8888",
+        "tcp:8889", "tcp:8082", "tcp:10000", "tcp:10002",
+        "tcp:9083", "tcp:3306", "tcp:3307"
+      ]
+    }
+  ]
 }</code></pre></div>
-  <p>Guarda la política. Luego, en <a href="https://login.tailscale.com/admin/settings/keys">Settings → Keys</a>,
-     genera una auth key <strong>reutilizable</strong>, con caducidad de un trimestre y con la etiqueta
-     <code>tag:aula</code>. No la subas al repositorio.</p>
+  <p>9870 es el NameNode, 9864 el DataNode, 8088 el ResourceManager, 8042 el NodeManager, 9000 y 9001
+     MinIO, 8080 Trino, 8888 el JupyterLab del laboratorio, 8889 el Jupyter del cliente Hadoop, 8082
+     Airflow, 10000 y 10002 HiveServer2, 9083 el metastore, 3306 el MySQL del metastore y 3307 el
+     MySQL de retail.</p>
+  <div class="note">Los alumnos comparten <strong>un solo stack</strong>. Lo que uno borre en HDFS,
+    en MinIO o en Airflow lo ven todos. Sirve para mirar las consolas y probar una configuración;
+    no para que cada uno monte su propio clúster.</div>
 
-  <h3>Windows 11</h3>
+  <h3>Clave para los alumnos</h3>
+  <p>En <a href="https://login.tailscale.com/admin/settings/keys">Settings → Keys</a> genera una auth key
+     con <strong>Reusable</strong> en ON, caducidad de <strong>90 días</strong>, <strong>Ephemeral</strong>
+     en OFF y <strong>Tags</strong> en ON con la etiqueta <code>tag:aula</code>. La descripción sola
+     no aplica la etiqueta: tiene que quedar marcada en Tags. No la subas al repositorio ni la pegues
+     en un chat. Aquí se escribe siempre como <code>LA_CLAVE</code>.</p>
+  <div class="warn">Una clave anterior quedó expuesta en un chat. Si sigue activa, revócala en la
+    consola y genera otra.</div>
+  <div class="warn"><strong>No ejecutes la clave <code>tag:aula</code> en el Windows del profesor.</strong>
+    Ese equipo ya tenía <code>--exit-node-allow-lan-access</code>. Un <code>tailscale up</code>
+    sin ese flag o sin <code>--reset</code> falla y no debe cambiar la identidad de ese PC.</div>
+
+  <h3>Alumnos: Windows 11 y Windows 10</h3>
   <p>PowerShell como administrador:</p>
   <div class="code"><pre><code>winget install tailscale.tailscale
-tailscale up --auth-key=tskey-auth-XXXXXXXX --unattended</code></pre></div>
+Restart-Service Tailscale
+tailscale.exe up --auth-key=LA_CLAVE --unattended</code></pre></div>
+  <p>Si no hay <code>winget</code>, descarga el
+     <a href="https://tailscale.com/download/windows">instalador oficial de Tailscale</a> y sigue
+     desde <code>Restart-Service</code>.</p>
+  <div class="warn">No pulses «Log in» de la interfaz gráfica: el equipo entraría con otra cuenta
+    y sin la etiqueta <code>tag:aula</code>.</div>
+  <p>Añade <code>--reset</code> solo si el comando exige flags de una sesión anterior. Si
+     <code>tailscale status</code> muestra <code>NoState</code>, el servicio no está arriba o todavía
+     no hay sesión: <code>Restart-Service Tailscale</code> y repite el <code>up</code>.</p>
+  <p>Comprueba con <code>tailscale status</code> y abre en el navegador
+     <code>http://IP_DE_CASA:PUERTO</code>. La IP es la <code>100.x</code> de casa, no la de la LAN
+     del aula.</p>
 
-  <h3>Ubuntu 22.04</h3>
+  <h3>Alumnos: Ubuntu 22.04 LTS Desktop</h3>
   <div class="code"><pre><code>curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --auth-key=tskey-auth-XXXXXXXX</code></pre></div>
-  <p>Si ese PC ya estaba unido a otra cuenta de Tailscale: <code>sudo tailscale logout</code> y repite
-     el <code>up</code>.</p>
-  <p>A partir de ahí, en el navegador, con la IP de casa:</p>
+sudo tailscale up --auth-key=LA_CLAVE</code></pre></div>
+  <p>Si el equipo ya está en otra cuenta: <code>sudo tailscale logout</code> y después
+     <code>sudo tailscale up --auth-key=LA_CLAVE</code>. Comprueba con <code>sudo tailscale status</code>
+     y abre la misma URL <code>http://IP_DE_CASA:PUERTO</code>.</p>
+
+  <h3>Consolas</h3>
   <table>
     <tr><th>Consola</th><th>Dirección</th><th>Credenciales</th></tr>
     <tr><td>HDFS NameNode</td><td><code>http://100.x.x.x:9870</code></td><td>—</td></tr>
-    <tr><td>YARN</td><td><code>http://100.x.x.x:8088</code></td><td>—</td></tr>
+    <tr><td>YARN ResourceManager</td><td><code>http://100.x.x.x:8088</code></td><td>—</td></tr>
     <tr><td>DataNode / NodeManager</td><td><code>:9864</code> y <code>:8042</code></td><td>—</td></tr>
-    <tr><td>MinIO</td><td><code>http://100.x.x.x:9001</code></td><td><code>minioadmin</code> / <code>minioadmin</code></td></tr>
+    <tr><td>MinIO</td><td><code>http://100.x.x.x:9001</code> (API <code>:9000</code>)</td><td><code>minioadmin</code> / <code>minioadmin</code></td></tr>
     <tr><td>Trino</td><td><code>http://100.x.x.x:8080</code></td><td>cualquier usuario</td></tr>
     <tr><td>HiveServer2</td><td><code>http://100.x.x.x:10002</code> · JDBC <code>:10000</code></td><td>—</td></tr>
-    <tr><td>JupyterLab</td><td><code>http://100.x.x.x:8888</code></td><td>sin token</td></tr>
-    <tr><td>Jupyter Hadoop</td><td><code>http://100.x.x.x:8889</code></td><td>sin token</td></tr>
+    <tr><td>Metastore</td><td><code>100.x.x.x:9083</code></td><td>—</td></tr>
+    <tr><td>JupyterLab del laboratorio</td><td><code>http://100.x.x.x:8888</code></td><td>sin token</td></tr>
+    <tr><td>Jupyter del cliente Hadoop</td><td><code>http://100.x.x.x:8889</code></td><td>sin token</td></tr>
     <tr><td>Airflow</td><td><code>http://100.x.x.x:8082</code></td><td><code>admin</code> / <code>admin</code></td></tr>
     <tr><td>MySQL <code>retail_db</code></td><td><code>100.x.x.x:3307</code></td><td><code>retail</code> / <code>retail</code></td></tr>
-    <tr><td>MySQL del catálogo</td><td><code>100.x.x.x:3306</code></td><td><code>hive</code> / <code>hive</code></td></tr>
+    <tr><td>MySQL del metastore</td><td><code>100.x.x.x:3306</code></td><td><code>hive</code> / <code>hive</code></td></tr>
   </table>
-  <div class="note">Es <strong>un solo stack para toda la clase</strong>. Lo que un alumno borre en HDFS,
-    en MinIO o en Airflow lo ven todos. Sirve para mirar las consolas y probar una configuración;
-    no para que cada uno monte su propio clúster.</div>
+
+  <h3>Si quiero volver a hacerlo</h3>
+  <ol>
+    <li>Stack en marcha en casa.</li>
+    <li>IP de <code>tailscale ip -4</code> anotada.</li>
+    <li>Política guardada en el editor de grants, con esa IP y solo esos puertos.</li>
+    <li>Clave reusable, 90 días, Ephemeral en OFF, con <code>tag:aula</code>.</li>
+    <li>En el alumno: instalar, <code>up --unattended</code> o <code>sudo up</code>, sin el login gráfico.</li>
+    <li>Probar un puerto (por ejemplo el 9870) y confirmar que el 22 y el 3389 no responden desde el alumno.</li>
+  </ol>
 </section>
 
 <!-- ================================================================ ? -->
