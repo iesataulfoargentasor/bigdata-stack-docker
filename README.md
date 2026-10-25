@@ -26,10 +26,11 @@ Parte del clúster Hadoop del profesor (imágenes `profesorbigdata/*:v2.0`) y a�
 7. [Recorrido 1: consultar el lago (`lake`)](#recorrido-1-consultar-el-lago-lake)
 8. [Recorrido 2: ELT con dlt, dbt y Airflow (`elt`)](#recorrido-2-elt-con-dlt-dbt-y-airflow-elt)
 9. [Operación diaria](#operación-diaria)
-10. [Estructura del repositorio](#estructura-del-repositorio)
-11. [Decisiones técnicas](#decisiones-técnicas)
-12. [Solución de problemas](#solución-de-problemas)
-13. [Otros compose del repositorio](#otros-compose-del-repositorio)
+10. [Acceso desde el aula](#acceso-desde-el-aula)
+11. [Estructura del repositorio](#estructura-del-repositorio)
+12. [Decisiones técnicas](#decisiones-técnicas)
+13. [Solución de problemas](#solución-de-problemas)
+14. [Otros compose del repositorio](#otros-compose-del-repositorio)
 
 ---
 
@@ -466,6 +467,54 @@ con.sql("SELECT * FROM 's3://processed/rango.parquet'").show()
 
 > Usa **`stop`/`start`** en el día a día. `down` elimina contenedores y red; con `-v`, también los
 > volúmenes con los datos.
+
+---
+
+## Acceso desde el aula
+
+El stack publicado en el equipo de casa no es visible desde el instituto: son dos redes distintas.
+Tampoco hay que abrir los puertos en el router. Las credenciales son las de clase y un puerto
+abierto a Internet deja HDFS, MinIO y Airflow al alcance de cualquiera.
+
+[Tailscale](https://tailscale.com/) crea una red privada entre ese Ubuntu y los PCs del aula.
+Funciona con CG-NAT y cuando el instituto sólo permite salir por el 443. Los alumnos usan las
+mismas consolas, con la IP Tailscale del equipo de casa en lugar de `localhost`.
+
+En el Ubuntu 24.04 de casa:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+tailscale ip -4
+```
+
+La cuenta tiene que ser de un correo público (un Gmail de la clase). Con el dominio del instituto,
+Tailscale abre una prueba de empresa de 14 días. En el panel, *Settings → Keys*, crea una auth key
+reutilizable y con caducidad: une los PCs del aula sin darles la contraseña del panel.
+
+En cada PC del aula (hace falta permiso de instalación):
+
+```powershell
+winget install tailscale.tailscale
+tailscale up --auth-key=tskey-auth-XXXXXXXX --unattended
+```
+
+| Consola | Desde el aula |
+|---|---|
+| NameNode | `http://100.x.x.x:9870` |
+| YARN | `http://100.x.x.x:8088` |
+| MinIO | `http://100.x.x.x:9001` (`minioadmin` / `minioadmin`) |
+| Trino | `http://100.x.x.x:8080` |
+| HiveServer2 | `http://100.x.x.x:10002`, JDBC en `:10000` |
+| JupyterLab / Jupyter Hadoop | `:8888` y `:8889` |
+| Airflow | `http://100.x.x.x:8082` (`admin` / `admin`) |
+| MySQL `retail_db` / catálogo | `:3307` (`retail`) y `:3306` (`hive`) |
+
+Deja el equipo de casa encendido y sin suspensión durante la clase. Es un único stack compartido:
+un `DROP` o un borrado en HDFS afecta a todo el grupo.
+
+Los pasos, incluida la suspensión de Ubuntu, están en la
+[guía de despliegue](https://iesataulfoargentasor.github.io/bigdata-stack-docker/#aula).
 
 ---
 

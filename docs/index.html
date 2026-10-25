@@ -89,6 +89,7 @@
   <a href="#probar-lake"><span class="num">5</span>Primera prueba: el lago</a>
   <a href="#probar-elt"><span class="num">6</span>Primera prueba: ELT</a>
   <a href="#operacion"><span class="num">7</span>Apagar, encender, reiniciar</a>
+  <a href="#aula"><span class="num">8</span>Acceso desde el aula</a>
   <a href="#problemas"><span class="num">?</span>Problemas frecuentes</a>
   <br>
   <a href="https://github.com/iesataulfoargentasor/bigdata-stack-docker">📦 Repositorio</a>
@@ -362,6 +363,64 @@ docker exec lab duckdb /workspace/data/retail.duckdb -c "SELECT * FROM main_mart
   </table>
   <div class="note">Usa <code>stop</code>/<code>start</code> en el día a día. Que los contenedores de Hadoop
     queden en <code>Exited (137)</code> tras un <code>stop</code> es normal.</div>
+</section>
+
+<!-- ================================================================ 8 -->
+<section id="aula">
+  <h2><span class="step">8</span>Acceso desde el aula</h2>
+  <p>El equipo de casa y los ordenadores del aula están en redes distintas. Los puertos de Docker
+     no se ven desde el instituto aunque el stack esté arrancado.</p>
+  <div class="warn"><strong>No abras esos puertos en el router de casa.</strong> Las contraseñas son las de
+    clase (<code>admin</code>, <code>minioadmin</code>, <code>retail</code>) y Jupyter no pide token.
+    Cualquiera en Internet podría borrar HDFS o lanzar trabajos. El acceso tiene que quedar limitado
+    a los equipos del aula.</div>
+  <p>La forma de conseguirlo es <a href="https://tailscale.com/">Tailscale</a>: una red privada entre
+     el Ubuntu de casa y los PCs del aula. Funciona aunque el operador use CG-NAT y aunque el
+     instituto sólo deje salir por el puerto 443. Después, cada consola se abre igual que en local,
+     cambiando <code>localhost</code> por la IP Tailscale del equipo de casa.</p>
+
+  <h3>En el Ubuntu de casa</h3>
+  <div class="code"><pre><code>curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+tailscale ip -4</code></pre></div>
+  <p>Al hacer <code>tailscale up</code> se abre el navegador para iniciar sesión. Usa una cuenta de
+     Gmail creada para la clase. Si entras con el correo del instituto (un dominio propio), Tailscale
+     activa una prueba de empresa de 14 días y luego deja de ser gratis.</p>
+  <p>Anota la IP que devuelve <code>tailscale ip -4</code>, algo como <code>100.89.12.34</code>.
+     El equipo tiene que seguir encendido durante la clase. En Ubuntu escritorio, desactiva la
+     suspensión:</p>
+  <div class="code"><pre><code>sudo mkdir -p /etc/systemd/logind.conf.d
+printf '[Login]\nIdleAction=ignore\nHandleLidSwitch=ignore\n' | sudo tee /etc/systemd/logind.conf.d/nosleep.conf
+sudo systemctl restart systemd-logind
+gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'</code></pre></div>
+
+  <h3>Clave para los ordenadores del aula</h3>
+  <p>En <a href="https://login.tailscale.com/admin/settings/keys">login.tailscale.com → Settings → Keys</a>
+     genera una <em>auth key</em> reutilizable, con caducidad (un trimestre basta). Con esa clave el
+     alumno une el PC a la red, pero no entra en el panel de administración. No la subas al repositorio.</p>
+
+  <h3>En cada PC del aula</h3>
+  <p>Hace falta permiso para instalar. En Windows:</p>
+  <div class="code"><pre><code>winget install tailscale.tailscale
+tailscale up --auth-key=tskey-auth-XXXXXXXX --unattended</code></pre></div>
+  <p>A partir de ahí, en el navegador, con la IP de casa:</p>
+  <table>
+    <tr><th>Consola</th><th>Dirección</th><th>Credenciales</th></tr>
+    <tr><td>HDFS NameNode</td><td><code>http://100.x.x.x:9870</code></td><td>—</td></tr>
+    <tr><td>YARN</td><td><code>http://100.x.x.x:8088</code></td><td>—</td></tr>
+    <tr><td>DataNode / NodeManager</td><td><code>:9864</code> y <code>:8042</code></td><td>—</td></tr>
+    <tr><td>MinIO</td><td><code>http://100.x.x.x:9001</code></td><td><code>minioadmin</code> / <code>minioadmin</code></td></tr>
+    <tr><td>Trino</td><td><code>http://100.x.x.x:8080</code></td><td>cualquier usuario</td></tr>
+    <tr><td>HiveServer2</td><td><code>http://100.x.x.x:10002</code> · JDBC <code>:10000</code></td><td>—</td></tr>
+    <tr><td>JupyterLab</td><td><code>http://100.x.x.x:8888</code></td><td>sin token</td></tr>
+    <tr><td>Jupyter Hadoop</td><td><code>http://100.x.x.x:8889</code></td><td>sin token</td></tr>
+    <tr><td>Airflow</td><td><code>http://100.x.x.x:8082</code></td><td><code>admin</code> / <code>admin</code></td></tr>
+    <tr><td>MySQL <code>retail_db</code></td><td><code>100.x.x.x:3307</code></td><td><code>retail</code> / <code>retail</code></td></tr>
+    <tr><td>MySQL del catálogo</td><td><code>100.x.x.x:3306</code></td><td><code>hive</code> / <code>hive</code></td></tr>
+  </table>
+  <div class="note">Es <strong>un solo stack para toda la clase</strong>. Lo que un alumno borre en HDFS,
+    en MinIO o en Airflow lo ven todos. Sirve para mirar las consolas y probar una configuración;
+    no para que cada uno monte su propio clúster.</div>
 </section>
 
 <!-- ================================================================ ? -->
