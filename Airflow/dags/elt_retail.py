@@ -21,6 +21,7 @@ with DAG(
     start_date=datetime(2026, 1, 1),
     schedule=None,
     catchup=False,
+    max_active_runs=1,  # DuckDB: un único escritor para las ejecuciones del DAG.
     default_args={"retries": 1, "retry_delay": timedelta(seconds=30)},
     tags=["elt", "retail", "dlt", "dbt"],
 ) as dag:

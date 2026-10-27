@@ -1,4 +1,9 @@
 #!/bin/bash
+# Este directorio sólo contiene los PID de los demonios de este contenedor.
+export HADOOP_PID_DIR=/tmp/hadoop-run
+export YARN_PID_DIR=/tmp/hadoop-run
+mkdir -p /tmp/hadoop-run
+rm -f /tmp/hadoop-run/*.pid /tmp/resourcemanager-ready /tmp/dnnm-ready
 
 HADOOP_HOME=/opt/bd/hadoop
 SERVICE=${HADOOP_HOME}/bin/yarn

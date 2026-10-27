@@ -202,10 +202,63 @@ processors=6</code></pre></div>
 
 <!-- ================================================================ 1 -->
 <section id="clonar">
-  <h2><span class="step">1</span>Clonar el repositorio</h2>
-  <div class="code"><pre><code>git clone https://github.com/iesataulfoargentasor/bigdata-stack-docker.git
+<h2>Despliegue rápido</h2>
+<h3>Preparar Windows 11 o Ubuntu 22.04</h3>
+<p>Instala Git y Docker. En Windows 11, abre Docker Desktop con el motor WSL 2 y contenedores Linux. En Ubuntu 22.04, utiliza Docker Engine con el complemento Compose v2 o Docker Desktop. Usa siempre el mismo motor/contexto para acceder a tus volúmenes.</p>
+<p>Comprueba en PowerShell (Windows) o Terminal (Ubuntu):</p>
+<div class="code"><pre><code>docker version
+docker compose version</code></pre></div>
+<p>docker version debe mostrar Client y Server. Si sólo aparece Client o un error 500, resuelve primero el arranque de Docker. Compose debe ser 2.20 o posterior.</p>
+<h3>Descargar y preparar el proyecto</h3>
+<div class="code"><pre><code>git clone https://github.com/iesataulfoargentasor/bigdata-stack-docker.git
 cd bigdata-stack-docker</code></pre></div>
+<p>Windows 11 — PowerShell:</p>
+<div class="code"><pre><code>if (-not (Test-Path .env)) { Copy-Item .env.example .env }</code></pre></div>
+<p>Ubuntu 22.04 — Terminal:</p>
+<div class="code"><pre><code>if [ ! -f .env ]; then cp .env.example .env; fi
+sed -i &quot;s/^AIRFLOW_UID=.*/AIRFLOW_UID=$(id -u)/&quot; .env</code></pre></div>
+<p>Esto guarda el usuario de Ubuntu en .env, para que Lab y Airflow puedan escribir en workspace. No hace falta repetirlo en cada terminal. Ejecuta Docker con tu usuario habitual, con acceso al motor; no clones ni prepares workspace con sudo. Si ya contiene archivos de otro usuario, revisa su propietario. Una variable AIRFLOW_UID exportada en la terminal prevalece sobre .env: elimínala o haz que coincida con él.</p>
+<h3>Elegir un escenario y arrancar</h3>
+<p>Ejecuta uno de los siguientes comandos; funcionan en ambos sistemas:</p>
+<div class="code"><pre><code># Lago: HDFS + YARN + MinIO + Hive + Trino + datos retail
+docker compose -f docker-compose.stack.yml --profile lake up -d --wait --wait-timeout 600
 
+# O bien ELT: MinIO + JupyterLab + DuckDB/dlt/dbt + Airflow
+docker compose -f docker-compose.stack.yml --profile elt up -d --wait --wait-timeout 600</code></pre></div>
+<p>La primera descarga es grande. El tiempo de arranque depende del equipo. --wait comprueba la disponibilidad declarada de los servicios, pero no sustituye a probar los ejercicios. Los servicios de inicialización deben terminar con código 0.</p>
+<div class="code"><pre><code>docker compose -f docker-compose.stack.yml --profile all ps -a</code></pre></div>
+<p>Los scripts Hadoop del repositorio se montan sobre las imágenes publicadas: no necesitas reconstruirlas para aplicar estas correcciones. Conserva las carpetas scripts, NameNode, ResourceManager y DataNode-NodeManager junto al Compose.</p>
+<h3>Entre sesiones y al actualizar</h3>
+<div class="code"><pre><code># Parar sin borrar datos
+docker compose -f docker-compose.stack.yml --profile all stop
+
+# Volver a iniciar el escenario elegido y comprobarlo
+docker compose -f docker-compose.stack.yml --profile lake up -d --wait --wait-timeout 600
+
+# Actualizar una clonación existente
+git pull --ff-only
+# Después, repite el comando up del escenario que uses.</code></pre></div>
+<p>Si actualizas desde una versión anterior, ejecuta primero stop, prepara .env y luego usa up para aplicar los cambios. down elimina contenedores y red, pero conserva los volúmenes. No uses down -v para solucionar errores: elimina los datos persistentes. No levantes a la vez el Hadoop mínimo y el stack completo: comparten nombres y puertos.</p>
+<h3>Comprobaciones después de arrancar</h3>
+<p>Para lake:</p>
+<div class="code"><pre><code>docker compose -f docker-compose.stack.yml exec namenode hdfs dfsadmin -report
+docker compose -f docker-compose.stack.yml exec namenode hdfs dfs -ls /user /tmp
+docker compose -f docker-compose.stack.yml exec trino trino --execute &quot;SELECT count(*) FROM mysql.retail_db.orders&quot;</code></pre></div>
+<p>Debe haber un DataNode activo, las carpetas preparadas y 20000 pedidos en una carga nueva. Para elt, abre http://localhost:8888, crea y guarda un cuaderno; abre Airflow en http://localhost:8082 (admin/admin) y ejecuta elt_retail. Sus tres tareas deben terminar bien. Cierra las conexiones a DuckDB del cuaderno antes de ejecutar el DAG. Sus ejecuciones se procesan de una en una; no ejecutes a la vez el ELT manual y el de Airflow.</p>
+<p>Ante un fallo:</p>
+<div class="code"><pre><code>docker compose -f docker-compose.stack.yml --profile all ps -a
+docker compose -f docker-compose.stack.yml logs --tail 100 NOMBRE_DEL_SERVICIO</code></pre></div>
+<p>Sustituye NOMBRE_DEL_SERVICIO por el que falla. No borres volúmenes para repetir el arranque.</p>
+<h3>Kafka</h3>
+<div class="code"><pre><code>docker compose -f docker-compose.kafka.yml up -d --wait --wait-timeout 600</code></pre></div>
+<p>Abre http://localhost:8083. Los tres brokers tienen volúmenes independientes y conservan los datos tras down seguido de up. Los clientes del mismo equipo usan localhost:29092, localhost:39092 y localhost:49092. Para clientes en otros equipos, configura KAFKA_EXTERNAL_HOST en .env con la IP o DNS accesible del servidor y vuelve a ejecutar up. Los puertos 29092, 39092 y 49092 deben ser accesibles desde esos clientes. La consola web puede usarse junto con Trino, que sigue en el puerto 8080.</p>
+<p>Si ya utilizabas Kafka antes de esta actualización, exporta primero los mensajes que quieras conservar. El diseño anterior guardaba los datos dentro de los contenedores; los volúmenes nuevos no copian automáticamente esos mensajes. Esta actualización crea un almacenamiento persistente nuevo al recrear los brokers.</p>
+<h3>Alcance de la validación</h3>
+<p>Puedes validar los archivos Compose, las dependencias y los puertos con: python scripts/validate-compose.py (en Ubuntu: python3 scripts/validate-compose.py). Esta validación no arranca contenedores. Antes de dar una instalación por lista para clase, realiza las comprobaciones anteriores y una prueba de escritura, lectura y recreación conservando los volúmenes. La revisión de octubre de 2026 no pudo ejecutar los contenedores en el equipo de revisión porque su motor Docker devolvía un error interno.</p>
+</section>
+
+<section id="atajos">
+  <h2>Atajo para los siguientes apartados</h2>
   <p>Para no repetir <code>-f docker-compose.stack.yml</code> en cada orden, indícale a Compose qué fichero usar:</p>
   <div class="tabs">
     <div class="tab-buttons">
@@ -214,7 +267,7 @@ cd bigdata-stack-docker</code></pre></div>
     </div>
     <div class="panel active" data-panel="ps"><div class="code"><pre><code>$env:COMPOSE_FILE = "docker-compose.stack.yml"</code></pre></div></div>
     <div class="panel" data-panel="sh"><div class="code"><pre><code>export COMPOSE_FILE=docker-compose.stack.yml
-export AIRFLOW_UID=$(id -u)    # sólo Linux: Airflow y el lab escriben con tu usuario</code></pre></div></div>
+# Prepara .env siguiendo el apartado anterior; queda guardado entre sesiones.</code></pre></div></div>
   </div>
   <div class="note">El resto de la guía asume que has definido <code>COMPOSE_FILE</code>. Si no, añade
     <code>-f docker-compose.stack.yml</code> detrás de <code>docker compose</code>.</div>
@@ -258,18 +311,18 @@ flowchart LR
 <section id="arrancar">
   <h2><span class="step">3</span>Arrancar</h2>
   <div class="code"><pre><code># Escenario lago
-docker compose --profile lake up -d
+docker compose --profile lake up -d --wait --wait-timeout 600
 
 # o escenario ELT
-docker compose --profile elt up -d</code></pre></div>
+docker compose --profile elt up -d --wait --wait-timeout 600</code></pre></div>
 
   <div class="warn"><strong>La primera vez descarga unos 12 GB</strong> de imágenes
     (<code>profesorbigdata/*:v2.0</code> en Docker Hub) y el tiempo depende de la conexión.
-    Las siguientes veces arranca en 2-3 minutos. <code>--build</code> sólo hace falta si has
+    El tiempo de arranque depende del equipo. <code>--build</code> sólo hace falta si has
     modificado un Dockerfile y quieres reconstruir la imagen en tu equipo.</div>
 
   <h3>Qué está pasando</h3>
-  <p>Los servicios arrancan en cadena: cada uno espera a que el anterior esté <em>healthy</em>.</p>
+  <p>Los servicios arrancan en cadena: las dependencias esperan sus comprobaciones de salud o la finalización de la inicialización. HDFS prepara sus carpetas después de salir del modo seguro y Trino espera a la carga de retail.</p>
   <pre class="mermaid" tabindex="0" role="region" aria-label="Diagrama: desplaza horizontalmente para ver su contenido">
 flowchart LR
   nn[namenode] --> dn[dnnm] --> hi[hdfs-init] --> hms[hive-metastore] --> hs2[hiveserver2]
@@ -278,7 +331,7 @@ flowchart LR
   mi[minio] --> mii[minio-init] --> tr
   </pre>
   <div class="note">Si un <code>up</code> termina con <code>dependency failed to start</code> en un equipo lento,
-    <strong>repite el mismo comando</strong>: continúa donde se quedó.</div>
+    consulta primero los logs del servicio. Si sólo faltaba tiempo, repite el mismo comando; no borres los volúmenes.</div>
 </section>
 
 <!-- ================================================================ 4 -->
@@ -367,8 +420,8 @@ docker exec lab duckdb /workspace/data/retail.duckdb -c "SELECT * FROM main_mart
   <div class="table-scroll" role="region" aria-label="Tabla: desplaza horizontalmente para ver todas las columnas" tabindex="0"><table>
     <tr><th>Quiero…</th><th>Comando</th></tr>
     <tr><td>Apagar al terminar la clase (conserva todo)</td><td><code>docker compose --profile all stop</code></td></tr>
-    <tr><td>Encender en la siguiente sesión</td><td><code>docker compose --profile lake start</code></td></tr>
-    <tr><td>Cambiar de escenario</td><td><code>docker compose --profile lake stop</code> y <code>docker compose --profile elt up -d</code></td></tr>
+    <tr><td>Encender en la siguiente sesión</td><td><code>docker compose --profile lake up -d --wait --wait-timeout 600</code></td></tr>
+    <tr><td>Cambiar de escenario</td><td><code>docker compose --profile lake stop</code> y <code>docker compose --profile elt up -d --wait --wait-timeout 600</code></td></tr>
     <tr><td>Ver logs de un servicio</td><td><code>docker compose logs -f trino</code></td></tr>
     <tr><td>Recargar <code>retail_db</code></td><td><code>docker compose run --rm retail-init python /workspace/init/retail_init.py --force</code></td></tr>
     <tr><td>Borrar contenedores (los datos quedan)</td><td><code>docker compose --profile all down</code></td></tr>
@@ -512,11 +565,11 @@ sudo tailscale up --auth-key=LA_CLAVE</code></pre></div>
        Apágalo con <code>docker compose -f docker-compose.yml down</code> y repite.</p></details>
 
   <details><summary>Ports are not available: 8080, 3306…</summary>
-    <p>Otra aplicación usa ese puerto: Kafka UI (8080), un MySQL instalado en el equipo (3306)…
+    <p>Otra aplicación usa ese puerto: Trino u otra aplicación (8080); Kafka UI utiliza 8083, un MySQL instalado en el equipo (3306)…
        Párala o cambia el puerto publicado en <code>docker-compose.stack.yml</code>.</p></details>
 
   <details><summary>namenode unhealthy / dependency failed to start</summary>
-    <p>El equipo va justo de recursos. Espera un minuto y repite el mismo <code>up -d</code>.
+    <p>Consulta <code>docker compose logs --tail 100 namenode hdfs-init dnnm</code>. Si sólo falta tiempo, repite el arranque; si hay errores de disco o configuración, resuélvelos primero.
        Levanta <code>lake</code> y <code>elt</code> por separado en vez de <code>all</code>.</p></details>
 
   <details><summary>Trino: hive-metastore:9083 Read timed out</summary>
@@ -529,11 +582,10 @@ sudo tailscale up --auth-key=LA_CLAVE</code></pre></div>
 
   <details><summary>Airflow: Cannot open file "/workspace/data/retail.duckdb"</summary>
     <p>Lo tiene abierto un cuaderno del lab, o (en Linux) <code>AIRFLOW_UID</code> no coincide con tu
-       usuario. Cierra la conexión del cuaderno y define <code>export AIRFLOW_UID=$(id -u)</code> antes del <code>up</code>.</p></details>
+       usuario. Cierra la conexión del cuaderno y guarda tu UID en <code>.env</code> como se explica al principio y repite <code>up</code>.</p></details>
 
   <details><summary>Docker Desktop: Internal Server Error</summary>
-    <p>Casi siempre es disco lleno. Libera espacio (<code>docker system df</code>, <code>docker image prune</code>)
-       o mueve el disco de Docker a otra unidad.</p></details>
+    <p>El motor no responde. Comprueba <code>docker version</code>, el espacio libre y los diagnósticos de Docker Desktop. Puede deberse a WSL o al almacenamiento; no se puede deducir la causa sólo del error 500. No uses un restablecimiento de fábrica ni borres volúmenes sin copia.</p></details>
 </section>
 
 <footer>

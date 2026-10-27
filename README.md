@@ -101,8 +101,9 @@ datos (la misma que Athena + Glue sobre S3).
 
 ### Orden de arranque
 
-El arranque está encadenado con `healthcheck` y `depends_on`: cada servicio espera a que el
-anterior esté **realmente** listo.
+El arranque está encadenado con `healthcheck` y `depends_on`: las dependencias esperan sus puertos o la finalización de la inicialización.
+El NameNode abre su RPC antes de recibir al DataNode; `hdfs-init` espera la salida
+del modo seguro y prepara los permisos. Trino espera también a que retail tenga datos.
 
 ```mermaid
 flowchart LR
@@ -113,7 +114,7 @@ flowchart LR
         mym[mysql-metastore] --> hms
         hms --> tr[trino]
         mi[minio] --> mii[minio-init] --> tr
-        myr[mysql-retail] --> tr
+        myr[mysql-retail] --> ri[retail-init] --> tr
     end
 ```
 
@@ -137,8 +138,8 @@ terminan: verlos como **`Exited (0)`** es lo correcto.
 ## Profiles: qué se arranca en cada sesión
 
 **Nada arranca por defecto.** Todos los servicios están detrás de *profiles* de Compose, así
-sólo se enciende lo que se necesita y se ahorra memoria. Un `docker compose up` a secas no
-arranca nada.
+sólo se enciende lo que se necesita y se ahorra memoria. Esto se refiere a `docker-compose.stack.yml`. Sin `-f`, Compose selecciona
+`docker-compose.yml` y sí levanta Hadoop (salvo que hayas definido `COMPOSE_FILE`).
 
 ### Profiles de componente
 
@@ -146,8 +147,8 @@ arranca nada.
 |---|---|---|
 | `hadoop` | namenode, resourcemanager, dnnm, client, hdfs-init | HDFS + YARN (+ Jupyter con cliente Hadoop) |
 | `minio` | minio, minio-init | Object storage (el lago "moderno") |
-| `hive` | mysql-metastore, hive-metastore, hiveserver2 | Catálogo de Hive |
-| `trino` | trino | Motor de consulta sobre el lago |
+| `hive` | HDFS + YARN + MinIO + inicialización + MySQL metastore + Hive | Hive con sus almacenamientos |
+| `trino` | Hive con dependencias + retail e inicialización + Trino | Todos los catálogos disponibles |
 | `lab` | mysql-retail, retail-init, lab | DuckDB + dlt + dbt (y `retail_db`) |
 | `airflow` | mysql-retail, retail-init, postgres-airflow, airflow-init, airflow-webserver, airflow-scheduler | Orquestación del ELT |
 
@@ -212,31 +213,111 @@ docker compose -f docker-compose.stack.yml --profile lake --profile lab up -d
 
 ## Despliegue rápido
 
-```bash
+### Preparar Windows 11 o Ubuntu 22.04
+
+Instala Git y Docker. En Windows 11, abre Docker Desktop con el motor WSL 2 y contenedores Linux. En Ubuntu 22.04, utiliza Docker Engine con el complemento Compose v2 o Docker Desktop. Usa siempre el mismo motor/contexto para acceder a tus volúmenes.
+
+Comprueba en PowerShell (Windows) o Terminal (Ubuntu):
+
+```text
+docker version
+docker compose version
+```
+
+docker version debe mostrar Client y Server. Si sólo aparece Client o un error 500, resuelve primero el arranque de Docker. Compose debe ser 2.20 o posterior.
+
+### Descargar y preparar el proyecto
+
+```text
 git clone https://github.com/iesataulfoargentasor/bigdata-stack-docker.git
 cd bigdata-stack-docker
+```
 
-# Escenario "lago": HDFS + YARN + MinIO + Hive + Trino
-docker compose -f docker-compose.stack.yml --profile lake up -d
+Windows 11 — PowerShell:
 
-# Escenario "ELT": MinIO + lab (DuckDB/dlt/dbt) + Airflow
-docker compose -f docker-compose.stack.yml --profile elt up -d
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
 
-# Estado
+Ubuntu 22.04 — Terminal:
+
+```bash
+if [ ! -f .env ]; then cp .env.example .env; fi
+sed -i "s/^AIRFLOW_UID=.*/AIRFLOW_UID=$(id -u)/" .env
+```
+
+Esto guarda el usuario de Ubuntu en .env, para que Lab y Airflow puedan escribir en workspace. No hace falta repetirlo en cada terminal. Ejecuta Docker con tu usuario habitual, con acceso al motor; no clones ni prepares workspace con sudo. Si ya contiene archivos de otro usuario, revisa su propietario. Una variable AIRFLOW_UID exportada en la terminal prevalece sobre .env: elimínala o haz que coincida con él.
+
+### Elegir un escenario y arrancar
+
+Ejecuta uno de los siguientes comandos; funcionan en ambos sistemas:
+
+```text
+# Lago: HDFS + YARN + MinIO + Hive + Trino + datos retail
+docker compose -f docker-compose.stack.yml --profile lake up -d --wait --wait-timeout 600
+
+# O bien ELT: MinIO + JupyterLab + DuckDB/dlt/dbt + Airflow
+docker compose -f docker-compose.stack.yml --profile elt up -d --wait --wait-timeout 600
+```
+
+La primera descarga es grande. El tiempo de arranque depende del equipo. --wait comprueba la disponibilidad declarada de los servicios, pero no sustituye a probar los ejercicios. Los servicios de inicialización deben terminar con código 0.
+
+```text
 docker compose -f docker-compose.stack.yml --profile all ps -a
 ```
 
-La **primera vez** descarga las imágenes de Docker Hub (`profesorbigdata/*:v2.0`, unos 12 GB
-entre los dos escenarios) y tarda según la conexión. Las siguientes veces arranca en 2-3 minutos.
-`--build` sólo hace falta si has cambiado un Dockerfile y quieres reconstruir en local.
+Los scripts Hadoop del repositorio se montan sobre las imágenes publicadas: no necesitas reconstruirlas para aplicar estas correcciones. Conserva las carpetas scripts, NameNode, ResourceManager y DataNode-NodeManager junto al Compose.
 
-> **Atajo para no escribir `-f` siempre:**
-> PowerShell: `$env:COMPOSE_FILE="docker-compose.stack.yml"` ·
-> bash: `export COMPOSE_FILE=docker-compose.stack.yml`.
-> A partir de ahí basta con `docker compose --profile lake up -d`.
+### Entre sesiones y al actualizar
 
-La guía detallada, con comprobaciones en cada paso, está en
-**[GitHub Pages](https://iesataulfoargentasor.github.io/bigdata-stack-docker/)**.
+```text
+# Parar sin borrar datos
+docker compose -f docker-compose.stack.yml --profile all stop
+
+# Volver a iniciar el escenario elegido y comprobarlo
+docker compose -f docker-compose.stack.yml --profile lake up -d --wait --wait-timeout 600
+
+# Actualizar una clonación existente
+git pull --ff-only
+# Después, repite el comando up del escenario que uses.
+```
+
+Si actualizas desde una versión anterior, ejecuta primero stop, prepara .env y luego usa up para aplicar los cambios. down elimina contenedores y red, pero conserva los volúmenes. No uses down -v para solucionar errores: elimina los datos persistentes. No levantes a la vez el Hadoop mínimo y el stack completo: comparten nombres y puertos.
+
+### Comprobaciones después de arrancar
+
+Para lake:
+
+```text
+docker compose -f docker-compose.stack.yml exec namenode hdfs dfsadmin -report
+docker compose -f docker-compose.stack.yml exec namenode hdfs dfs -ls /user /tmp
+docker compose -f docker-compose.stack.yml exec trino trino --execute "SELECT count(*) FROM mysql.retail_db.orders"
+```
+
+Debe haber un DataNode activo, las carpetas preparadas y 20000 pedidos en una carga nueva. Para elt, abre http://localhost:8888, crea y guarda un cuaderno; abre Airflow en http://localhost:8082 (admin/admin) y ejecuta elt_retail. Sus tres tareas deben terminar bien. Cierra las conexiones a DuckDB del cuaderno antes de ejecutar el DAG. Sus ejecuciones se procesan de una en una; no ejecutes a la vez el ELT manual y el de Airflow.
+
+Ante un fallo:
+
+```text
+docker compose -f docker-compose.stack.yml --profile all ps -a
+docker compose -f docker-compose.stack.yml logs --tail 100 NOMBRE_DEL_SERVICIO
+```
+
+Sustituye NOMBRE_DEL_SERVICIO por el que falla. No borres volúmenes para repetir el arranque.
+
+### Kafka
+
+```text
+docker compose -f docker-compose.kafka.yml up -d --wait --wait-timeout 600
+```
+
+Abre http://localhost:8083. Los tres brokers tienen volúmenes independientes y conservan los datos tras down seguido de up. Los clientes del mismo equipo usan localhost:29092, localhost:39092 y localhost:49092. Para clientes en otros equipos, configura KAFKA_EXTERNAL_HOST en .env con la IP o DNS accesible del servidor y vuelve a ejecutar up. Los puertos 29092, 39092 y 49092 deben ser accesibles desde esos clientes. La consola web puede usarse junto con Trino, que sigue en el puerto 8080.
+
+Si ya utilizabas Kafka antes de esta actualización, exporta primero los mensajes que quieras conservar. El diseño anterior guardaba los datos dentro de los contenedores; los volúmenes nuevos no copian automáticamente esos mensajes. Esta actualización crea un almacenamiento persistente nuevo al recrear los brokers.
+
+### Alcance de la validación
+
+Puedes validar los archivos Compose, las dependencias y los puertos con: python scripts/validate-compose.py (en Ubuntu: python3 scripts/validate-compose.py). Esta validación no arranca contenedores. Antes de dar una instalación por lista para clase, realiza las comprobaciones anteriores y una prueba de escritura, lectura y recreación conservando los volúmenes. La revisión de octubre de 2026 no pudo ejecutar los contenedores en el equipo de revisión porque su motor Docker devolvía un error interno.
 
 ---
 
@@ -457,7 +538,7 @@ con.sql("SELECT * FROM 's3://processed/rango.parquet'").show()
 | Acción | Comando |
 |---|---|
 | Apagar entre sesiones (conserva todo) | `docker compose -f docker-compose.stack.yml --profile all stop` |
-| Volver a encender | `docker compose -f docker-compose.stack.yml --profile lake start` |
+| Volver a encender | `docker compose -f docker-compose.stack.yml --profile lake up -d --wait --wait-timeout 600` |
 | Ver estado | `docker compose -f docker-compose.stack.yml --profile all ps -a` |
 | Ver logs | `docker compose -f docker-compose.stack.yml logs -f hive-metastore trino` |
 | Cambiar de escenario | `... --profile lake stop` y después `... --profile elt up -d` |
@@ -547,13 +628,13 @@ Problemas reales encontrados al montar el stack y cómo se resolvieron:
 |---|---|---|
 | `docker compose up` no arranca nada | Falta el profile | Añade `--profile lake`, `elt` o `all` |
 | `Conflict. The container name "/namenode" is already in use` | Está levantado `docker-compose.yml` (clúster mínimo) | `docker compose down` en ese compose y repite |
-| `Ports are not available: ... 8080` | Kafka UI u otra app usa el 8080 | Para `docker-compose.kafka.yml` o la app que lo ocupe |
+| `Ports are not available` | Otra aplicación ocupa el puerto | Revisa el puerto indicado: Kafka UI usa 8083 y Trino 8080 |
 | `Ports are not available: ... 3306` | Hay un MySQL instalado en el equipo | Páralo o cambia el puerto publicado de `mysql-metastore` |
-| `namenode` *unhealthy* / `dependency failed to start` | Equipo lento o con poca memoria | Espera y repite el mismo `up -d`; levanta `lake` y `elt` por separado |
+| `namenode` *unhealthy* / `dependency failed to start` | Revisa los logs: puede faltar tiempo o existir otro fallo | Consulta los logs de namenode, dnnm y hdfs-init antes de repetir el arranque |
 | Trino: `hive-metastore:9083: Read timed out` | Metastore aún arrancando o equipo saturado | `docker compose ... ps` y reintenta cuando esté *healthy* |
 | Trino: `Partition location does not exist` tras un error | Un `CREATE TABLE AS` se interrumpió | `DROP TABLE` y vuelve a crearla |
 | Tarea de Airflow: `Cannot open file retail.duckdb` | Lo tiene abierto un cuaderno del `lab` | Cierra la conexión de DuckDB en el cuaderno |
-| Docker Desktop devuelve *Internal Server Error* | Disco lleno | Libera espacio o mueve el disco de Docker a otra unidad |
+| Docker Desktop devuelve *Internal Server Error* | El motor no responde; puede haber problemas de WSL, disco o almacenamiento | Comprueba `docker version`, el espacio libre y los diagnósticos de Docker Desktop. No restablezcas ni borres volúmenes sin copia |
 | Contenedores de Hadoop en `Exited (137)` tras `stop` | Los demonios no se cierran en 10 s | Normal; `start` los recupera sin perder datos |
 
 ---
@@ -564,7 +645,7 @@ Problemas reales encontrados al montar el stack y cómo se resolvieron:
 |---|---|---|
 | `docker-compose.yml` | Clúster Hadoop mínimo, construyendo las imágenes | `docker compose up -d --build` |
 | `docker-compose.hub.yml` | El mismo clúster con las imágenes de Docker Hub | `docker compose -f docker-compose.hub.yml up -d` |
-| `docker-compose.kafka.yml` | Kafka 4 (KRaft, 3 nodos) + Kafka UI en :8080 | `docker compose -f docker-compose.kafka.yml up -d` |
+| `docker-compose.kafka.yml` | Kafka 4 (KRaft, 3 nodos) + Kafka UI en :8083 | `docker compose -f docker-compose.kafka.yml up -d` |
 
 > El clúster mínimo y el stack usan los **mismos nombres de contenedor**: no los levantes a la vez.
 

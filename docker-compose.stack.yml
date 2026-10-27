@@ -10,8 +10,8 @@
 # Nada arranca sin profile. Profiles de componente:
 #   hadoop    namenode, resourcemanager, dnnm, client, hdfs-init
 #   minio     minio, minio-init
-#   hive      mysql-metastore, hive-metastore, hiveserver2
-#   trino     trino
+#   hive      HDFS + YARN + MinIO + catálogo + HiveServer2
+#   trino     Hive con dependencias + retail + Trino
 #   lab       mysql-retail, retail-init, lab
 #   airflow   mysql-retail, retail-init, postgres-airflow, airflow-init, airflow-webserver, airflow-scheduler
 # Profiles paraguas:
@@ -42,7 +42,7 @@
 #   8080 Trino · 8082 Airflow (admin / admin)
 #   9083 Hive Metastore · 10000 HiveServer2 JDBC · 10002 HiveServer2 web
 #   3306 mysql-metastore · 3307 mysql-retail (retail / retail)
-# Trino usa el 8080, igual que la consola de docker-compose.kafka.yml: no los levantes a la vez.
+# Kafka UI utiliza 8083; puede convivir con Trino (8080).
 #
 # Stack docente: permisos de HDFS abiertos, credenciales triviales, Jupyter sin token.
 
@@ -116,54 +116,57 @@ services:
       context: ./Base
 
   namenode:
-    profiles: ["hadoop", "lake", "all"]
+    profiles: ["hadoop", "hive", "trino", "lake", "all"]
     image: profesorbigdata/hadoop-namenode-image-profesor:v2.0
     pull_policy: missing
     build: ./NameNode
     container_name: namenode
     hostname: namenode
-    command: /opt/bd/start-daemons.sh
+    command: ["bash", "/opt/bd/start-daemons.sh"]
     ports:
       - "9870:9870"
     volumes:
+      - ./NameNode/Config-files/start-daemons-namenode.sh:/opt/bd/start-daemons.sh:ro
       - namenode-data:/var/data/hadoop/hdfs
       - ./NameNode/Config-files/core-site-stack.xml:/opt/bd/hadoop/etc/hadoop/core-site.xml:ro
     networks:
       - hadoop-net
     healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/namenode-ready"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9000'"]
       interval: 5s
       timeout: 5s
       retries: 60
       start_period: 60s
 
   resourcemanager:
-    profiles: ["hadoop", "lake", "all"]
+    profiles: ["hadoop", "hive", "trino", "lake", "all"]
     image: profesorbigdata/hadoop-resourcemanager-image-profesor:v2.0
     pull_policy: missing
     build: ./ResourceManager
     container_name: resourcemanager
     hostname: resourcemanager
-    command: /opt/bd/start-daemons.sh
+    command: ["bash", "/opt/bd/start-daemons.sh"]
     ports:
       - "8088:8088"
+    volumes:
+      - ./ResourceManager/Config-files/start-daemons-resourcemanager.sh:/opt/bd/start-daemons.sh:ro
     networks:
       - hadoop-net
     healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/resourcemanager-ready"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8032'"]
       interval: 5s
       timeout: 5s
       retries: 60
       start_period: 40s
 
   dnnm:
-    profiles: ["hadoop", "lake", "all"]
+    profiles: ["hadoop", "hive", "trino", "lake", "all"]
     image: profesorbigdata/hadoop-datanode-image-profesor:v2.0
     pull_policy: missing
     build: ./DataNode-NodeManager
     container_name: dnnm
     hostname: dnnm
-    command: /opt/bd/start-daemons.sh
+    command: ["bash", "/opt/bd/start-daemons.sh"]
     depends_on:
       namenode:
         condition: service_healthy
@@ -173,11 +176,12 @@ services:
       - "9864:9864"
       - "8042:8042"
     volumes:
+      - ./DataNode-NodeManager/Config-files/start-daemons-dnnm.sh:/opt/bd/start-daemons.sh:ro
       - datanode-data:/var/data/hadoop/hdfs
     networks:
       - hadoop-net
     healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/dnnm-ready"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9866 && echo > /dev/tcp/localhost/8042'"]
       interval: 5s
       timeout: 5s
       retries: 60
@@ -192,6 +196,8 @@ services:
     hostname: client
     command: /opt/bd/start-client.sh
     depends_on:
+      hdfs-init:
+        condition: service_completed_successfully
       namenode:
         condition: service_healthy
       resourcemanager:
@@ -208,19 +214,13 @@ services:
   # Prepara HDFS para el catálogo y termina (exited 0).
   # hdadmin arrancó el NameNode, así que es el superusuario de HDFS.
   hdfs-init:
-    profiles: ["hadoop", "lake", "all"]
+    profiles: ["hadoop", "hive", "trino", "lake", "all"]
     image: profesorbigdata/hadoop-client-image-profesor:v2.0
     container_name: hdfs-init
     user: hdadmin
-    command:
-      - bash
-      - -c
-      - |
-        set -e
-        hdfs dfs -mkdir -p /user/hive/warehouse /tmp/hive
-        hdfs dfs -chmod -R 777 /user/hive /tmp/hive
-        hdfs dfs -chmod 1777 /tmp
-        hdfs dfs -ls /user/hive /tmp
+    command: ["bash", "/opt/bd/init-hdfs.sh"]
+    volumes:
+      - ./scripts/init-hdfs.sh:/opt/bd/init-hdfs.sh:ro
     depends_on:
       namenode:
         condition: service_healthy
@@ -235,7 +235,7 @@ services:
   # MinIO dejó de publicar imágenes en Docker Hub y quay.io.
   # bitnamilegacy conserva la misma versión del servidor y del cliente mc.
   minio:
-    profiles: ["minio", "lake", "elt", "all"]
+    profiles: ["minio", "hive", "trino", "lake", "elt", "all"]
     image: bitnamilegacy/minio:2025.4.22
     container_name: minio
     hostname: minio
@@ -258,7 +258,7 @@ services:
 
   # Crea los buckets del lago por capas y termina (exited 0)
   minio-init:
-    profiles: ["minio", "lake", "elt", "all"]
+    profiles: ["minio", "hive", "trino", "lake", "elt", "all"]
     image: bitnamilegacy/minio-client:2025.4.16
     container_name: minio-init
     environment:
@@ -281,7 +281,7 @@ services:
 
   # Sólo metadatos del catálogo: qué tablas hay, sus columnas y su ruta
   mysql-metastore:
-    profiles: ["hive", "lake", "all"]
+    profiles: ["hive", "trino", "lake", "all"]
     image: mysql:8.4
     container_name: mysql-metastore
     hostname: mysql-metastore
@@ -306,7 +306,7 @@ services:
 
   hive-metastore:
     <<: *hive-common
-    profiles: ["hive", "lake", "all"]
+    profiles: ["hive", "trino", "lake", "all"]
     container_name: hive-metastore
     hostname: hive-metastore
     environment:
@@ -329,7 +329,6 @@ services:
         condition: service_healthy
       hdfs-init:
         condition: service_completed_successfully
-        required: false
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9083'"]
       interval: 5s
@@ -339,7 +338,7 @@ services:
 
   hiveserver2:
     <<: *hive-common
-    profiles: ["hive", "lake", "all"]
+    profiles: ["hive", "trino", "lake", "all"]
     container_name: hiveserver2
     hostname: hiveserver2
     environment:
@@ -384,13 +383,10 @@ services:
     depends_on:
       hive-metastore:
         condition: service_healthy
-        required: false
       minio-init:
         condition: service_completed_successfully
-        required: false
-      mysql-retail:
-        condition: service_healthy
-        required: false
+      retail-init:
+        condition: service_completed_successfully
     networks:
       - hadoop-net
 
@@ -398,7 +394,7 @@ services:
 
   # Origen operacional: la base de datos transaccional de la que extrae dlt
   mysql-retail:
-    profiles: ["lab", "airflow", "lake", "elt", "all"]
+    profiles: ["lab", "airflow", "trino", "lake", "elt", "all"]
     image: mysql:8.4
     container_name: mysql-retail
     hostname: mysql-retail
@@ -424,7 +420,7 @@ services:
   # Carga retail_db y termina (exited 0). Si ya tiene datos, no hace nada.
   retail-init:
     <<: *lab-common
-    profiles: ["lab", "airflow", "lake", "elt", "all"]
+    profiles: ["lab", "airflow", "trino", "lake", "elt", "all"]
     container_name: retail-init
     command: ["python", "/workspace/init/retail_init.py"]
     depends_on:
