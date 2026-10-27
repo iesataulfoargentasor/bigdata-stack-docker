@@ -317,7 +317,9 @@ Si ya utilizabas Kafka antes de esta actualización, exporta primero los mensaje
 
 ### Alcance de la validación
 
-Puedes validar los archivos Compose, las dependencias y los puertos con: python scripts/validate-compose.py (en Ubuntu: python3 scripts/validate-compose.py). Esta validación no arranca contenedores. Antes de dar una instalación por lista para clase, realiza las comprobaciones anteriores y una prueba de escritura, lectura y recreación conservando los volúmenes. La revisión de octubre de 2026 no pudo ejecutar los contenedores en el equipo de revisión porque su motor Docker devolvía un error interno.
+Puedes validar los archivos Compose, las dependencias y los puertos con: python scripts/validate-compose.py (en Ubuntu: python3 scripts/validate-compose.py). Esta validación no arranca contenedores. Antes de dar una instalación por lista para clase, realiza las comprobaciones anteriores y una prueba de escritura, lectura y recreación conservando los volúmenes. El 28/10/2026 se verificaron en Windows con Docker Desktop los escenarios lake y elt y el clúster Kafka: consultas, flujo ELT y persistencia de lake y Kafka tras recrear contenedores. Ubuntu nativo y el perfil all simultáneo no se han probado en ejecución. Consulta el informe de validación para conocer el alcance exacto.
+
+[Informe de las pruebas reales](docs/validacion-2026-10-28.txt).
 
 ---
 

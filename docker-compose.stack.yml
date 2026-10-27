@@ -132,7 +132,7 @@ services:
     networks:
       - hadoop-net
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9000'"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/namenode/9000'"]
       interval: 5s
       timeout: 5s
       retries: 60
@@ -153,7 +153,7 @@ services:
     networks:
       - hadoop-net
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8032'"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/resourcemanager/8032'"]
       interval: 5s
       timeout: 5s
       retries: 60
@@ -181,7 +181,7 @@ services:
     networks:
       - hadoop-net
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9866 && echo > /dev/tcp/localhost/8042'"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/dnnm/9866 && echo > /dev/tcp/dnnm/8042'"]
       interval: 5s
       timeout: 5s
       retries: 60
@@ -374,6 +374,12 @@ services:
     image: trinodb/trino:476
     container_name: trino
     hostname: trino
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/lib/trino/bin/health-check"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
     ports:
       - "8080:8080"
     volumes:

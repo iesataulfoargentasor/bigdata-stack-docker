@@ -1,0 +1,67 @@
+PRUEBAS REALES DEL STACK — 28/10/2026 (Europe/Madrid)
+
+Entorno: Windows, Docker Desktop 4.34.3, Engine 27.2.0,
+Compose 2.29.2, contenedores Linux amd64, 8 CPU y unos 8 GB para Docker.
+Las imágenes ya estaban descargadas. No se ha verificado la construcción desde cero.
+
+AISLAMIENTO
+No había contenedores en ejecución al comenzar. Se utilizaron los proyectos
+sbd-audit-lake, sbd-audit-elt y sbd-audit-kafka, con volúmenes de prueba
+distintos de los del usuario. No se borraron los volúmenes anteriores.
+
+AJUSTES DETECTADOS DURANTE LAS PRUEBAS
+1. Los RPC de NameNode y ResourceManager escuchan en el nombre del contenedor.
+   Los healthchecks con localhost daban falsos fallos. Se han cambiado a
+   namenode:9000, resourcemanager:8032 y dnnm:9866/8042 en los tres Compose Hadoop.
+2. Trino tardó unos 40 segundos en iniciar. La comprobación incluida en su imagen
+   lo marcaba unhealthy antes de finalizar. El Compose ahora concede 120 segundos
+   iniciales y 30 reintentos, conservando la comprobación del propio Trino.
+
+LAKE: CORRECTO
+- NameNode, DataNode y ResourceManager disponibles; 1 DataNode vivo y 1 nodo YARN RUNNING.
+- hdfs-init, minio-init y retail-init finalizan con código 0.
+- Hive Metastore y HiveServer2 disponibles; consulta SELECT 1 correcta.
+- Trino crea una tabla Parquet desde tpch.tiny.nation en HDFS: 25 filas.
+- Trino crea una tabla Parquet desde tpch.tiny.region en MinIO: 5 filas.
+- Trino consulta mysql.retail_db.orders: 20000 filas.
+- HiveServer2 lee ambas tablas compartidas: 25 filas en HDFS y 5 en MinIO.
+- Se ejecuta down SIN -v y se vuelve a levantar lake con --wait.
+- HDFS recibe los informes de bloques, sale automáticamente del modo seguro
+  y termina su inicialización. No se fuerza la salida del modo seguro.
+- Todos los servicios esperados quedan disponibles. Las consultas siguen
+  devolviendo 25, 5 y 20000 filas después de recrear los contenedores.
+
+ELT: CORRECTO
+- El perfil elt completa up --wait. Airflow inicializa su base y su usuario.
+- JupyterLab guarda un cuaderno por su API (HTTP 201) y permite recuperarlo.
+- dlt carga MySQL en DuckDB sin trabajos fallidos.
+- dbt run: 6 modelos correctos (4 vistas y 2 tablas).
+- dbt test: 11 pruebas correctas, sin errores.
+- Se activa y lanza elt_retail con el planificador real de Airflow.
+- Las tareas dlt_mysql_a_duckdb, dbt_run y dbt_test terminan en success.
+- dbt muestra avisos de sintaxis obsoleta en argumentos de pruebas, sin impedir
+  la ejecución. No equivalen a fallos de los modelos ni de las 11 pruebas.
+
+KAFKA: CORRECTO
+- Arrancan los tres brokers; Kafka UI responde HTTP 200 en localhost:8083.
+- Se crea audit-persistencia con 1 partición y factor de replicación 3.
+- Se publica un mensaje con confirmación de todas las réplicas y se lee desde
+  otro broker. El estado ISR incluye los nodos 1, 2 y 3.
+- Se ejecuta down SIN -v y después up --wait.
+- El mensaje vuelve a leerse correctamente tras recrear todos los contenedores.
+
+LÍMITES DE ESTA VALIDACIÓN
+- No se ha ejecutado en un equipo Ubuntu nativo. Sus instrucciones de UID y
+  permisos están revisadas, pero requieren una prueba en ese sistema.
+- No se ha arrancado all completo simultáneamente ni se han ejecutado por
+  separado los dos Compose mínimos de Hadoop. Sí pasan su validación de configuración.
+- YARN registra su nodo; no se ha lanzado un trabajo MapReduce específico.
+- Los clientes Kafka se probaron dentro de la red Docker. No se ha probado
+  el acceso de un cliente externo por Tailscale ni desde otro portátil.
+- No es una prueba de carga, alta disponibilidad ni seguridad de producción.
+- Los contenedores de prueba se retiran al terminar; se conservan sus volúmenes.
+
+La validación de configuración sigue disponible con:
+  python scripts/validate-compose.py
+En Ubuntu:
+  python3 scripts/validate-compose.py
