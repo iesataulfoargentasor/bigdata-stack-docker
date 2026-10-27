@@ -4,8 +4,8 @@ Ecosistema completo de ingeniería de datos para clase, levantado con Docker Com
 **HDFS + YARN**, **MinIO**, **Hive Metastore + HiveServer2**, **Trino**, un nodo de trabajo
 con **DuckDB + dlt + dbt** y **Airflow** para orquestar.
 
-Parte del clúster Hadoop del profesor (imágenes `profesorbigdata/*:v2.0`) y añade las piezas del
-[stack docente de Aitor Medrano](https://aitor-medrano.github.io/iabd/de/stack-docker-de.html).
+Parte del clúster Hadoop del profesor (imágenes `profesorbigdata/*:v2.0`) y añade las herramientas
+del stack docente de ingeniería de datos.
 
 📘 **Guía de despliegue paso a paso:** https://iesataulfoargentasor.github.io/bigdata-stack-docker/
 
@@ -572,7 +572,4 @@ Problemas reales encontrados al montar el stack y cómo se resolvieron:
 
 ## Créditos
 
-- Arquitectura y profiles inspirados en
-  [*Stack Docker para Ingeniería de datos*](https://aitor-medrano.github.io/iabd/de/stack-docker-de.html),
-  de Aitor Medrano.
 - Clúster Hadoop y adaptación: IES Ataúlfo Argenta — profesorado de Big Data Aplicado.
